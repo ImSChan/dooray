@@ -35,7 +35,7 @@ SIZE_OPTIONS = [{"text":"사이즈업 X","value":"no"},{"text":"사이즈업","v
 def section_select(slot:int):
     return {
         "callbackId":"coffee-poll",
-        "title": f"항목 {slot}",
+        "title": f"메뉴 선택",
         "actions":[
             {
                 "name": f"section_{slot}",
@@ -134,8 +134,6 @@ def coffee_command():
         "text":"☕ 커피 투표 - 에뜨리에",
         "attachments": [
             section_select(1),
-            section_select(2),
-            section_select(3),
             status_attachment()
         ]
     }
