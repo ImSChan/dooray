@@ -127,7 +127,7 @@ def section_blocks(section: str) -> list[dict]:
 def status_attachment(fields=None):
     return {
         "title": "--------------선택 현황--------------",
-        "fields": fields or [{"title":"","value":"","short":False}]
+        "fields": fields or [{"title":"아직 투표 없음","value":"첫 투표를 기다리는 중!","short":False}]
     }
 
 def pack(payload: dict) -> JSONResponse:
