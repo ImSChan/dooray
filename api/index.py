@@ -64,6 +64,22 @@ def _get_state(channel_log_id: str, user_id: str, section: str):
                 "_ts": time.time(),
             }
         return cur
+# ---------- “원본 메시지(본문 attachments)” 캐시 ----------
+# key: channelLogId(본문) -> {"attachments": [...], "_ts": epoch}
+_orig = {}
+_ORIG_TTL = 60 * 60  # 1시간
+
+def _orig_set(main_id: str, attachments: list[dict]):
+    _orig[main_id] = {"attachments": attachments, "_ts": time.time()}
+
+def _orig_get(main_id: str):
+    # TTL cleanup
+    now = time.time()
+    for k in list(_orig.keys()):
+        if now - _orig[k]["_ts"] > _ORIG_TTL:
+            del _orig[k]
+    item = _orig.get(main_id)
+    return (item or {}).get("attachments")
 
 # ---------- UI 빌더 (버튼 버전) ----------
 def section_blocks_buttons(section: str, per_row: int = 4) -> list[dict]:
@@ -98,19 +114,6 @@ def section_blocks_buttons(section: str, per_row: int = 4) -> list[dict]:
     if row:
         blocks.append({"callbackId": "coffee-poll", "actions": row})
 
-    # 3) 최종 선택 버튼(제출)
-    blocks.append({
-        "callbackId": "coffee-poll",
-        "actions": [
-            {
-                "name": f"vote::{section}",
-                "text": "선택",
-                "type": "button",
-                "value": f"vote|{section}",
-                "style": "primary"
-            }
-        ]
-    })
 
     return blocks
 
@@ -179,19 +182,131 @@ async def coffee_actions(req: Request):
     user_email = user.get("email", user_id)
     channel_log_id = str(data.get("channelLogId") or original.get("id") or "")
 
-    # 드롭다운 변경: 상태만 저장, 메시지는 그대로(=아무 업데이트 안 함)
     # name 형식: "menu::섹션", "temp::섹션", "size::섹션"
     if "::" in action_name and action_name.split("::",1)[0] in ("menu","temp","size"):
         kind, section = action_name.split("::",1)
         if section in MENU_SECTIONS:
             if kind == "menu":
+                # 1) 상태 저장 (메뉴)
                 _set_state(channel_log_id, user_id, section, menu=action_value)
+                # 2) 본문 원본 attachments 캐시
+                if original.get("attachments"):
+                    _orig_set(channel_log_id, original["attachments"])
+                # 3) 에페메럴 미니창: ICE/HOT 선택 + 제출 버튼
+                return pack({
+                    "responseType": "ephemeral",
+                    "replaceOriginal": False,
+                    "text": f"선택한 메뉴: {section} / {action_value}\nICE/HOT 를 선택하고 '선택'을 눌러 투표를 반영하세요.",
+                    "attachments": [
+                        {
+                            "callbackId": "coffee-poll-ephemeral",
+                            "actions": [
+                                {
+                                    "name": f"etemp::{section}|{channel_log_id}",
+                                    "text": "ICE/HOT",
+                                    "type": "select",
+                                    "options": TEMP_OPTIONS  # HOT/ICE
+                                },
+                                {
+                                    "name": "eapply",
+                                    "text": "선택",
+                                    "type": "button",
+                                    "value": f"eapply|{section}|{channel_log_id}",
+                                    "style": "primary"
+                                }
+                            ]
+                        }
+                    ]
+                })
+
             elif kind == "temp":
                 _set_state(channel_log_id, user_id, section, temp=action_value)
             elif kind == "size":
                 _set_state(channel_log_id, user_id, section, size=action_value)
-        # 빈 200 OK (Dooray는 200/빈 응답 허용). 굳이 메시지 업데이트하지 않음.
+
+        # 에페메럴/버튼 외 나머지는 업데이트 없이 200 OK
         return pack({})
+    
+    # 에페메럴 ICE/HOT 셀렉트: name = "etemp::<section>|<main_id>"
+    if action_name.startswith("etemp::"):
+        meta = action_name.split("::",1)[1]  # "<section>|<main_id>"
+        try:
+            section, main_id = meta.split("|", 1)
+        except ValueError:
+            return pack({})
+        if section in MENU_SECTIONS:
+            # 상태는 메인 메시지 기준 main_id 로 저장/갱신
+            _set_state(main_id, user_id, section, temp=action_value)
+        return pack({})
+
+    # 에페메럴 "선택" 버튼: value = "eapply|<section>|<main_id>"
+    if action_value.startswith("eapply|"):
+        _, section, main_id = action_value.split("|", 2)
+
+        # 1) 상태 읽기 (키는 main_id 기준)
+        st = _get_state(main_id, user_id, section)
+        menu = st["menu"] or MENU_SECTIONS[section][0]
+        temp = st["temp"] or "HOT"
+        size = st.get("size") or "no"   # 현재는 사용 안하지만 혹시 모를 확장 대비
+
+        key = f"{section} / {menu} ({temp},{'사이즈업' if size=='yes' else '기본'})"
+
+        # 2) 본문 원본 attachments 로딩 (캐시에서)
+        orig_atts = _orig_get(main_id)
+        if not orig_atts:
+            # 캐시가 없으면 에페메럴 안내만 하고 종료 (본문은 건드리지 않음)
+            return pack({
+                "responseType": "ephemeral",
+                "text": "⚠️ 본문 메시지를 찾을 수 없어 투표 반영에 실패했어요. 다시 시도해 주세요."
+            })
+
+        # 3) 현황 업데이트
+        status = {}
+        # 기존 현황 파싱
+        for att in (orig_atts or []):
+            if att.get("title") == "--------------선택 현황--------------" or att.get("title") == "선택 현황":
+                for f in att.get("fields", []):
+                    k = f.get("title") or ""
+                    v = (f.get("value") or "").strip()
+                    if k:
+                        status[k] = [x for x in v.split() if x]
+        # 중복 제거 후 새 항목에 반영
+        for k in list(status.keys()):
+            if user_email in status[k]:
+                status[k] = [u for u in status[k] if u != user_email]
+        status.setdefault(key, [])
+        if user_email not in status[key]:
+            status[key].append(user_email)
+
+        # 4) 새 attachments 구성 (UI 블록은 그대로, 현황만 갈아끼움)
+        new_atts = []
+        replaced = False
+        for att in orig_atts:
+            if att.get("title") == "--------------선택 현황--------------" or att.get("title") == "선택 현황":
+                new_atts.append({
+                    "title": "--------------선택 현황--------------",
+                    "fields": [
+                        {"title": k, "value": " ".join(v) if v else "-", "short": False}
+                        for k, v in status.items()
+                    ] or [{"title":"아직 투표 없음","value":"첫 투표를 기다리는 중!","short":False}]
+                })
+                replaced = True
+            else:
+                new_atts.append(att)
+        if not replaced:
+            # 만약 원본에 현황 블록이 없었다면 추가
+            new_atts.append({
+                "title": "--------------선택 현황--------------",
+                "fields": [{"title":"아직 투표 없음","value":"첫 투표를 기다리는 중!","short":False}]
+            })
+
+        # 5) 본문 업데이트 (replaceOriginal=True)
+        return pack({
+            "text": (original.get("text") or "☕ 커피 투표 - 에뜨리에"),
+            "attachments": new_atts,
+            "responseType": "inChannel",
+            "replaceOriginal": True
+        })
 
     # 버튼: vote|섹션  → 상태 읽어 결과 반영
     if action_value.startswith("vote|"):
