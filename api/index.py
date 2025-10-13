@@ -184,7 +184,8 @@ async def coffee_command(req: Request):
     for s in ["추천메뉴","스무디","커피","음료","병음료"]:
         atts.extend(section_blocks_buttons(s, per_row=4))  # per_row로 한 줄 버튼 개수 조절
     atts.append(status_attachment())
-    
+    return pack({"responseType":"inChannel","replaceOriginal":False,"text":"☕ 커피 투표 - 에뜨리에","attachments":atts})
+
 # ---------- 인터랙션 ----------
 @app.post("/dooray/actions")
 async def coffee_actions(req: Request):
