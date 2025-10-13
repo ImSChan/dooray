@@ -1,185 +1,279 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
-import os, json, logging, sys, requests
-from requests.exceptions import RequestException, SSLError, Timeout, ConnectionError
+import os, json, logging, sys, requests, itertools
 
-app = FastAPI(title="Dooray Dialog Button Demo")
+app = FastAPI(title="Coffee Poll (/커피투표)")
 
-# ----- logging -----
+# ---------- Logging ----------
 for h in logging.root.handlers[:]:
     logging.root.removeHandler(h)
-logging.basicConfig(level="INFO", handlers=[logging.StreamHandler(sys.stdout)])
-log = logging.getLogger("dooray-dialog-demo")
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    handlers=[logging.StreamHandler(sys.stdout)],
+    format="%(levelname)s %(asctime)s %(name)s : %(message)s",
+)
+log = logging.getLogger("coffee-poll")
 
-def ok(payload: dict) -> JSONResponse:
-    log.info("[RESP] %s", json.dumps(payload, ensure_ascii=False))
-    return JSONResponse(payload, media_type="application/json; charset=utf-8")
+def ok(payload: dict):  # unify response + logging
+    try:
+        log.info("[RESP] %s", json.dumps(payload, ensure_ascii=False))
+    except Exception:
+        pass
+    return JSONResponse(payload)
 
 def verify(req: Request):
-    """옵션: Dooray 검증 토큰 사용 시"""
+    # 필요하면 Dooray에서 주는 검증 토큰 헤더를 확인해서 쓰세요.
     expected = os.getenv("DOORAY_VERIFY_TOKEN")
     if not expected:
         return
     got = req.headers.get("X-Dooray-Token") or req.headers.get("Authorization")
     if got != expected:
-        return JSONResponse({"text": "invalid token"}, status_code=401)
+        raise HTTPException(status_code=401, detail="invalid token")
 
-# ----- Dialog opener -----
-def open_dialog(tenant_domain: str, channel_id: str, cmd_token: str, trigger_id: str):
-    url = f"https://{tenant_domain}/messenger/api/channels/{channel_id}/dialogs"
-    headers = {
-        "token": cmd_token,
-        "Content-Type": "application/json; charset=utf-8",
-    }
-    body = {
-        "token": cmd_token,          # Dooray 예시처럼 바디에도 포함
-        "triggerId": trigger_id,
-        "callbackId": "sample-dialog",
-        "dialog": {
-            "callbackId": "sample-dialog",
-            "title": "요청 등록",
-            "submitLabel": "등록",
-            "elements": [
-                {"type": "text", "label": "제목", "name": "title", "minLength": 2, "maxLength": 50},
-                {"type": "textarea", "label": "내용", "name": "desc", "minLength": 5, "maxLength": 500},
-                {"type": "select", "label": "우선순위", "name": "priority", "value": "normal",
-                 "options": [{"label":"낮음","value":"low"},{"label":"보통","value":"normal"},{"label":"높음","value":"high"}]}
-            ]
-        }
-    }
+# ---------- 메뉴 정의 ----------
+# 카테고리별 옵션(표시는 text, 내부 값은 value)
+MENU_SECTIONS = {
+    "추천메뉴": [
+        "더치커피","아메리카노","카페라떼","유자민트 릴렉서 티","ICE 케모리치 릴렉서 티"
+    ],
+    "스무디": [
+        "딸기주스","바나나주스","레몬요거트 스무디","블루베리요거트 스무디","딸기 요거트 스무니","딸기 바나나 스무디"
+    ],
+    "커피": [
+        "에스프레소","아메리카노","카페라떼","카푸치노","바닐라라떼","돌체라떼","시나몬라떼",
+        "헤이즐넛라떼","카라멜마키야토","카페모카","피치프레소","더치커피"
+    ],
+    "음료": [
+        "그린티 라떼","오곡라떼","고구마라떼","로얄밀크티라떼","초콜릿라떼","리얼자몽티","리얼레몬티","진저레몬티",
+        "매실차","오미자차","자몽에이드","레몬에이드","진저레몬에이드","스팀우유","사과유자차","페퍼민트",
+        "얼그레이","캐모마일","유자민트릴렉서티","ICE 케모리치 릴렉서티","배도라지모과차","헛개차",
+        "복숭아 아이스티","딸기라떼"
+    ],
+    "병음료": [
+        "분다버그 진저","분다버그 레몬에이드","분다버그 망고","분다버그 자몽"
+    ],
+}
 
-    log.info("[DIALOG>REQ] %s %s", url, json.dumps(body, ensure_ascii=False))
-    try:
-        r = requests.post(url, headers=headers, json=body, timeout=8)
-    except (Timeout, SSLError, ConnectionError, RequestException) as e:
-        log.exception("[DIALOG EXC] POST failed: %s", e)
-        return {"ok": False, "status": None, "body": None, "error": str(e)}
+# 합쳐서 하나의 options 배열(최대 100 안 넘게)
+ALL_MENU_OPTIONS = [{"text": f"[{cat}] {name}", "value": name}
+                    for cat, items in MENU_SECTIONS.items()
+                    for name in items]
 
-    # 응답 로깅 (헤더 + 본문)
-    ctype = r.headers.get("content-type", "")
-    text  = (r.text or "")[:2000]
-    log.info("[DIALOG<RES] %s CT=%s BODY=%s", r.status_code, ctype, text)
+TEMP_OPTIONS = [
+    {"text": "ICE", "value": "ICE"},
+    {"text": "HOT", "value": "HOT"},
+]
+SIZE_OPTIONS = [
+    {"text": "사이즈업 X", "value": "no"},
+    {"text": "사이즈업", "value": "yes"},
+]
 
-    # 1) 본문 JSON 시도
-    j = None
-    if text:
+# 한 메시지(투표판)에서 제공할 슬롯 개수
+NUM_SLOTS = 3
+
+# ---------- 상태 저장 (메모리) ----------
+# polls[poll_id] = {
+#   "shop": "에뜨리에",
+#   "votes": { userId: {"menu":..., "temp":..., "size":..., "display": "..."} },
+#   "pending": { (userId, slot): {"menu":..., "temp":..., "size":...} }
+# }
+polls: dict[str, dict] = {}
+
+# ---------- 공용 유틸 ----------
+def parse_payload(req_body: bytes, ctype: str) -> dict:
+    body = req_body.decode("utf-8", "ignore")
+    log.info("[IN] CT=%s RAW=%s", ctype, body[:2000])
+    if (ctype or "").lower().startswith("application/json"):
         try:
-            j = r.json()
+            return json.loads(body)
         except Exception:
-            j = None
+            return {}
+    # x-www-form-urlencoded / multipart → payload=... 케이스
+    try:
+        from urllib.parse import parse_qs
+        data = {k: v[0] for k, v in parse_qs(body).items()}
+        if "payload" in data:
+            return json.loads(data["payload"])
+        return data
+    except Exception:
+        return {}
 
-    # 2) 성공 판정: 200 and (빈 바디 or header.isSuccessful True)
-    if r.status_code == 200 and (not text or (isinstance(j, dict) and j.get("header", {}).get("isSuccessful") is True)):
-        return {"ok": True, "status": r.status_code, "body": j, "error": None}
+def user_display(d: dict) -> str:
+    # Dooray payload에 따라 email/name이 다를 수 있어 안전하게 구성
+    u = d.get("user") or {}
+    email = u.get("email")
+    name  = u.get("name")
+    uid   = u.get("id")
+    return name or email or str(uid)
 
-    # 3) 실패 메시지 추출
-    err = None
-    if isinstance(j, dict):
-        err = j.get("header", {}).get("resultMessage") or j.get("message")
-    return {"ok": False, "status": r.status_code, "body": j, "error": err or (text if text else "unknown")}
+def build_usage() -> dict:
+    return {
+        "responseType": "ephemeral",
+        "text": "☕ /커피투표 {매장} 를 입력하세요.\n- 지원 매장: `에뜨리에`, `에뜰`\n- 예) `/커피투표 에뜨리에`",
+    }
 
-# ----- Slash: 버튼 한 개만 보이게 -----
+def build_not_supported(shop: str) -> dict:
+    return {
+        "responseType": "ephemeral",
+        "text": f"❌ `{shop}` 매장은 아직 지원하지 않습니다. (현재: 에뜨리에만)",
+    }
+
+def build_poll_attachments(poll_id: str) -> list[dict]:
+    """슬롯별 드롭다운 + 버튼, 하단 현황"""
+    atts: list[dict] = []
+    for slot in range(1, NUM_SLOTS + 1):
+        atts.append({
+            "callbackId": "coffee-poll",
+            "title": f"항목 {slot}",
+            "actions": [
+                {"name": f"menu_{slot}", "text": "메뉴 선택", "type": "select", "options": ALL_MENU_OPTIONS},
+            ]
+        })
+        atts.append({
+            "callbackId": "coffee-poll",
+            "actions": [
+                {"name": f"temp_{slot}", "text": "ICE/HOT", "type": "select", "options": TEMP_OPTIONS},
+                {"name": f"size_{slot}", "text": "사이즈", "type": "select", "options": SIZE_OPTIONS},
+                {"name": f"vote_{slot}", "text": "선택", "type": "button",
+                 "value": f"vote|{poll_id}|{slot}"}
+            ]
+        })
+    # 현황
+    atts.append({"title": "선택 현황", "fields": build_status_fields(poll_id)})
+    return atts
+
+def build_status_fields(poll_id: str) -> list[dict]:
+    p = polls.get(poll_id) or {}
+    votes = p.get("votes", {})
+    # 메뉴별로 그룹핑
+    grouped: dict[str, list[str]] = {}
+    for v in votes.values():
+        key = f"{v['menu']} ({v['temp']}{' / size↑' if v['size']=='yes' else ''})"
+        grouped.setdefault(key, []).append(v["display"])
+    # 보기 좋게 정렬
+    fields = []
+    for k in sorted(grouped.keys()):
+        voters = " ".join(sorted(grouped[k]))
+        fields.append({"title": k, "value": voters or "-", "short": False})
+    if not fields:
+        fields = [{"title": "아직 투표 없음", "value": "첫 투표를 기다리는 중!", "short": False}]
+    return fields
+
+def rebuild_poll_message(poll_id: str, shop: str) -> dict:
+    return {
+        "responseType": "inChannel",
+        "replaceOriginal": True,
+        "text": f"☕ 커피 투표 - {shop}",
+        "attachments": build_poll_attachments(poll_id),
+    }
+
+# ---------- 엔드포인트 ----------
 @app.post("/dooray/command")
 async def slash(req: Request):
-    v = verify(req)
-    if isinstance(v, JSONResponse): return v
+    verify(req)
+    raw = await req.body()
+    data = parse_payload(raw, req.headers.get("content-type",""))
+    # 액션 폴백 방지: command 전용으로 처리
+    if data.get("actionValue"):
+        return ok({"responseType":"ephemeral","text":"잘못된 호출입니다.(action to /command)"})
 
-    data = await req.json()
-    log.info("[IN/SLASH] %s", json.dumps(data, ensure_ascii=False))
+    text = (data.get("text") or "").strip()
+    if not text:
+        return ok(build_usage())
 
-    # 메시지: 대화창 열기 버튼 1개
+    shop = text
+    if shop == "에뜰":
+        return ok(build_not_supported(shop))
+    if shop != "에뜨리에":
+        return ok(build_usage())
+
+    # 에뜨리에 시작 → 채널에 투표판 게시
+    # poll_id는 메시지 업데이트용으로 originalMessage.id를 쓰는 것이 보통이지만
+    # 첫 응답 시점에는 없으므로, 임시 아이디를 만들고 액션에서 originalMessage.id로 교체해도 됨.
+    # 여기서는 액션 페이로드(originalMessage.id)를 실제 poll_id로 쓸 것이므로
+    # 일단 dummy를 넣고, 액션 첫 호출 때 교체하는 패턴로 구현.
+    dummy_poll_id = "pending"
     payload = {
-        "responseType": "ephemeral",   # 실행자에게만 보임
-        "text": "대화창을 열어 추가 정보를 입력하세요.",
-        "attachments": [
-            {
-                "callbackId": "dlg-open",
-                "actions": [
-                    {
-                        "name": "open",
-                        "type": "button",
-                        "text": "📝 대화창 열기",
-                        "value": "open-dialog",
-                        "style": "primary"
-                    }
-                ]
-            }
-        ]
+        "responseType": "inChannel",
+        "deleteOriginal": True,      # 사용자의 슬래시 입력 메시지는 삭제
+        "text": f"☕ 커피 투표 - {shop}",
+        "attachments": build_poll_attachments(dummy_poll_id),
     }
     return ok(payload)
 
-# ----- Actions: 버튼 클릭 → 다이얼로그 열기 / 다이얼로그 제출 -----
 @app.post("/dooray/actions")
 async def actions(req: Request):
-    v = verify(req)
-    if isinstance(v, JSONResponse): return v
+    verify(req)
+    raw = await req.body()
+    data = parse_payload(raw, req.headers.get("content-type",""))
+    log.info("[ACTIONS] %s", json.dumps(data, ensure_ascii=False)[:2000])
 
-    data = await req.json()
-    log.info("[IN/ACTIONS] %s", json.dumps(data, ensure_ascii=False))
+    cb = data.get("callbackId")
+    if cb != "coffee-poll":
+        # 다른 액션(혹시) 무시
+        return ok({"responseType":"ephemeral","text":"알 수 없는 액션입니다."})
 
-    if data.get("callbackId") == "dlg-open" and data.get("actionName") == "open":
-        tenant_domain = data.get("tenant", {}).get("domain") or data.get("tenantDomain")
-        channel_id    = data.get("channel", {}).get("id")    or data.get("channelId")
-        cmd_token     = data.get("cmdToken")
-        trigger_id    = data.get("triggerId")
+    original = data.get("originalMessage", {}) or {}
+    poll_id = original.get("id") or "missing"
+    channel = data.get("channel") or {}
+    user    = data.get("user") or {}
+    user_id = (user.get("id") or "")
+    display = user_display(data)
 
-        if not (tenant_domain and channel_id and cmd_token and trigger_id):
-            return ok({"responseType":"ephemeral","text":"필수 값 누락(tenantDomain/channelId/cmdToken/triggerId)"})
+    # 최초 액션 도착 시, dummy → real id로 초기화
+    if poll_id not in polls:
+        polls[poll_id] = {"shop": "에뜨리에", "votes": {}, "pending": {}}
 
-        # 다이얼로그 열기
-        result = open_dialog(tenant_domain, channel_id, cmd_token, trigger_id)
-        if result["ok"]:
-            return ok({
-                "responseType": "ephemeral",
-                "replaceOriginal": True,
-                "text": "📋 대화창을 열었습니다. 입력 후 제출하세요!"
-            })
-        else:
-            # 실패 사유를 바로 보여주면 원인 파악 쉬움 (triggerId 만료/권한 문제/네트워크 등)
-            return ok({
-                "responseType": "ephemeral",
-                "replaceOriginal": False,
-                "text": f"⚠️ 대화창 열기 실패\n- status: {result['status']}\n- error: {result['error'] or 'unknown'}"
-            })
+    name = data.get("actionName")
+    value = (data.get("actionValue") or "").strip()
 
+    # 드롭다운(선택만 하고 확정은 아님)
+    # name: menu_1 / temp_1 / size_1  -> slot = 마지막 토큰
+    if name and ("_" in name) and value and not value.startswith("vote|"):
+        kind, slot_s = name.split("_", 1)
+        try:
+            slot = int(slot_s)
+        except:
+            slot = 1
+        pending_key = (user_id, slot)
+        pend = polls[poll_id]["pending"].get(pending_key, {"menu": None, "temp": None, "size": None})
+        if kind == "menu":
+            pend["menu"] = value
+        elif kind == "temp":
+            pend["temp"] = value
+        elif kind == "size":
+            pend["size"] = value
+        polls[poll_id]["pending"][pending_key] = pend
+        # 사용자에게만 보이는 안내
+        return ok({
+            "responseType": "ephemeral",
+            "replaceOriginal": False,
+            "text": f"임시 선택(항목 {slot}) 저장됨: {pend}"
+        })
 
-    # 2) 다이얼로그 제출
-    if data.get("type") == "dialog_submission" and data.get("callbackId") == "sample-dialog":
-        sub = data.get("submission", {}) or {}
-        title = (sub.get("title") or "").strip()
-        desc  = (sub.get("desc") or "").strip()
-        prio  = (sub.get("priority") or "").strip()
+    # 선택 버튼
+    if value.startswith("vote|"):
+        # vote|{poll_id or 'pending'}|{slot}
+        try:
+            _, _pid, slot_s = value.split("|", 2)
+            slot = int(slot_s)
+        except:
+            return ok({"responseType":"ephemeral","text":"잘못된 투표 값입니다."})
 
-        # 검증 에러 예시
-        errs = []
-        if len(title) < 2: errs.append({"name":"title","error":"제목은 2자 이상"})
-        if len(desc)  < 5: errs.append({"name":"desc","error":"내용은 5자 이상"})
-        if prio not in {"low","normal","high"}:
-            errs.append({"name":"priority","error":"우선순위를 선택하세요"})
-        if errs:
-            # 200 + errors → 다이얼로그는 닫히지 않고 필드 에러 표시
-            return JSONResponse({"errors": errs})
+        # pending 값 확인
+        pend = polls[poll_id]["pending"].get((user_id, slot))
+        if not pend or not pend.get("menu") or not pend.get("temp") or not pend.get("size"):
+            return ok({"responseType":"ephemeral","text":"먼저 드롭다운에서 메뉴/ICEHOT/사이즈를 모두 선택하세요."})
 
-        # 성공 → 빈 JSON 200 → 다이얼로그 닫힘
-        # (선택) 채널 공지
-        resp_url = data.get("responseUrl")
-        if resp_url:
-            msg = {
-                "responseType": "inChannel",
-                "text": f"✅ 요청 접수: *{title}*",
-                "attachments": [{
-                    "fields":[
-                        {"title":"우선순위","value": prio.upper(), "short": True},
-                        {"title":"내용","value": desc, "short": False}
-                    ]
-                }]
-            }
-            try:
-                r = requests.post(resp_url, json=msg, timeout=8)
-                log.info("[HOOK POST] %s %s", r.status_code, r.text[:500])
-            except Exception as e:
-                log.exception("responseUrl post failed: %s", e)
-        return JSONResponse({})
+        # 중복 투표 방지(유저당 1회)
+        if user_id in polls[poll_id]["votes"]:
+            return ok({"responseType":"ephemeral","text":"이미 투표하셨습니다. (중복 투표 불가)"})
 
-    # 기타 액션
-    return ok({"responseType":"ephemeral","text":"지원하지 않는 액션입니다."})
+        polls[poll_id]["votes"][user_id] = {
+            "menu": pend["menu"], "temp": pend["temp"], "size": pend["size"], "display": display
+        }
+        # 선택 현황 반영 → 메시지 업데이트
+        return ok(rebuild_poll_message(poll_id, polls[poll_id]["shop"]))
+
+    # 그 외
+    return ok({"responseType":"ephemeral","text":"지원하지 않는 동작입니다."})
