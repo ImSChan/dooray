@@ -81,25 +81,6 @@ def section_blocks_buttons(section: str, per_row: int = 4) -> list[dict]:
         "actions": []  # 제목만 보이게 actions 비움
     })
 
-    # 1) 온도/사이즈 드롭다운 (기본 HOT / 기본 사이즈)
-    blocks.append({
-        "callbackId": "coffee-poll",
-        "actions": [
-            {
-                "name": f"temp::{section}",
-                "text": "ICE/HOT",
-                "type": "select",
-                "options": TEMP_OPTIONS  # HOT, ICE
-            },
-            {
-                "name": f"size::{section}",
-                "text": "사이즈",
-                "type": "select",
-                "options": SIZE_OPTIONS  # 기본/사이즈업
-            },
-        ]
-    })
-
     # 2) 메뉴 버튼들 (가로 per_row개씩 줄바꿈)
     menus = MENU_SECTIONS[section]
     row: list[dict] = []
