@@ -64,51 +64,61 @@ def _get_state(channel_log_id: str, user_id: str, section: str):
                 "_ts": time.time(),
             }
         return cur
-# ---------- UI 빌더 ----------
 
-def section_blocks(section: str) -> list[dict]:
-    """섹션 UI를 2~3개의 attachment로 분리해서 세로 여백 확보"""
-    # 1) 제목 + 메뉴 드롭다운 (행1)
-    top = {
+# ---------- UI 빌더 (버튼 버전) ----------
+def section_blocks_buttons(section: str, per_row: int = 4) -> list[dict]:
+    """
+    섹션 제목 + (행1) ICE/HOT, 사이즈 드롭다운 + (여러 행) 메뉴 버튼들
+    - 버튼 name을 "menu::{section}" 으로 설정 → 기존 핸들러가 그대로 상태 저장
+    - 버튼 value/text = 실제 메뉴명
+    """
+    blocks: list[dict] = []
+
+    # 0) 섹션 제목
+    blocks.append({
         "callbackId": "coffee-poll",
         "title": f"--------------[{section}]--------------",
-        "actions": [
-            {
-                "name": f"menu::{section}",
-                "text": "메뉴 선택",
-                "type": "select",
-                "options": [
-                    {"text": f"[{section}] {m}", "value": m}
-                    for m in MENU_SECTIONS[section]
-                ],
-            }
-        ],
-    }
+        "actions": []  # 제목만 보이게 actions 비움
+    })
 
-    # 2) ICE/HOT + 사이즈 (행2)
-    middle = {
+    # 1) 온도/사이즈 드롭다운 (기본 HOT / 기본 사이즈)
+    blocks.append({
         "callbackId": "coffee-poll",
         "actions": [
             {
                 "name": f"temp::{section}",
                 "text": "ICE/HOT",
                 "type": "select",
-                "options": TEMP_OPTIONS,
+                "options": TEMP_OPTIONS  # HOT, ICE
             },
             {
                 "name": f"size::{section}",
                 "text": "사이즈",
                 "type": "select",
-                "options": SIZE_OPTIONS,
+                "options": SIZE_OPTIONS  # 기본/사이즈업
             },
-        ],
-    }
+        ]
+    })
 
-    # (선택) 작은 스페이서 – 아주 살짝 더 띄우고 싶다면 사용
-    spacer = {"text": "\u00A0"}  # non-breaking space
+    # 2) 메뉴 버튼들 (가로 per_row개씩 줄바꿈)
+    menus = MENU_SECTIONS[section]
+    row: list[dict] = []
+    for i, m in enumerate(menus, start=1):
+        row.append({
+            "name": f"menu::{section}",     # <-- 기존 핸들러와 동일 키
+            "type": "button",
+            "text": m,
+            "value": m,                      # 선택된 메뉴값
+            "style": "default"
+        })
+        if i % per_row == 0:
+            blocks.append({"callbackId": "coffee-poll", "actions": row})
+            row = []
+    if row:
+        blocks.append({"callbackId": "coffee-poll", "actions": row})
 
-    # 3) 선택 버튼 (행3)
-    bottom = {
+    # 3) 최종 선택 버튼(제출)
+    blocks.append({
         "callbackId": "coffee-poll",
         "actions": [
             {
@@ -116,18 +126,17 @@ def section_blocks(section: str) -> list[dict]:
                 "text": "선택",
                 "type": "button",
                 "value": f"vote|{section}",
-                "style": "primary",
+                "style": "primary"
             }
-        ],
-    }
+        ]
+    })
 
-    return [top, middle, spacer, bottom]
-
+    return blocks
 
 def status_attachment(fields=None):
     return {
         "title": "--------------선택 현황--------------",
-        "fields": fields or [{"title":"아직 투표 없음","value":"첫 투표를 기다리는 중!","short":False}]
+        "fields": fields or None
     }
 
 def pack(payload: dict) -> JSONResponse:
@@ -171,9 +180,11 @@ async def coffee_command(req: Request):
         return pack({"responseType":"ephemeral","text":"🚫 아직 '에뜰'은 지원하지 않아요. '에뜨리에'로 시도해 주세요."})
 
     # 기본: 에뜨리에
-    atts = [section_block(s) for s in ["추천메뉴","스무디","커피","음료","병음료"]] + [status_attachment()]
-    return pack({"responseType":"inChannel","replaceOriginal":False,"text":"☕ 커피 투표 - 에뜨리에","attachments":atts})
-
+    atts = []
+    for s in ["추천메뉴","스무디","커피","음료","병음료"]:
+        atts.extend(section_blocks_buttons(s, per_row=4))  # per_row로 한 줄 버튼 개수 조절
+    atts.append(status_attachment())
+    
 # ---------- 인터랙션 ----------
 @app.post("/dooray/actions")
 async def coffee_actions(req: Request):
