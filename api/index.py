@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import os, json, logging, sys, requests
+from requests.exceptions import RequestException, SSLError, Timeout, ConnectionError
 
 app = FastAPI(title="Dooray Dialog Button Demo")
 
@@ -24,15 +25,12 @@ def verify(req: Request):
         return JSONResponse({"text": "invalid token"}, status_code=401)
 
 # ----- Dialog opener -----
+
 def open_dialog(tenant_domain: str, channel_id: str, cmd_token: str, trigger_id: str):
-    """
-    POST https://{tenantDomain}/messenger/api/channels/{channelId}/dialogs
-    header: token: cmdToken
-    """
     url = f"https://{tenant_domain}/messenger/api/channels/{channel_id}/dialogs"
     headers = {
         "token": cmd_token,
-        "Content-Type": "application/json; charset=utf-8"
+        "Content-Type": "application/json; charset=utf-8",
     }
     body = {
         "token": cmd_token,
@@ -46,18 +44,38 @@ def open_dialog(tenant_domain: str, channel_id: str, cmd_token: str, trigger_id:
                 {"type":"text","label":"제목","name":"title","minLength":2,"maxLength":50},
                 {"type":"textarea","label":"내용","name":"desc","minLength":5,"maxLength":500},
                 {"type":"select","label":"우선순위","name":"priority","value":"normal",
-                 "options":[
-                    {"label":"낮음","value":"low"},
-                    {"label":"보통","value":"normal"},
-                    {"label":"높음","value":"high"}
-                 ]}
+                 "options":[{"label":"낮음","value":"low"},
+                            {"label":"보통","value":"normal"},
+                            {"label":"높음","value":"high"}]}
             ]
         }
     }
+
     log.info("[DIALOG>REQ] %s %s", url, json.dumps(body, ensure_ascii=False))
-    r = requests.post(url, headers=headers, json=body, timeout=8)
-    log.info("[DIALOG<RES] %s %s", r.status_code, r.text[:1000])
-    return r
+    try:
+        r = requests.post(url, headers=headers, json=body, timeout=8)
+    except (Timeout, SSLError, ConnectionError, RequestException) as e:
+        log.exception("[DIALOG EXC] POST failed: %s", e)
+        return {"ok": False, "status": None, "body": None, "error": str(e)}
+
+    text = r.text[:2000]
+    log.info("[DIALOG<RES] %s %s", r.status_code, text)
+
+    # Dooray 표준 응답 파싱 시도
+    try:
+        j = r.json()
+    except Exception:
+        j = None
+
+    # isSuccessful 검사(문서: $.header.isSuccessful)
+    if r.ok and isinstance(j, dict) and j.get("header", {}).get("isSuccessful") is True:
+        return {"ok": True, "status": r.status_code, "body": j, "error": None}
+    else:
+        # 실패 메시지 뽑기 (가능하면 resultMessage)
+        msg = None
+        if isinstance(j, dict):
+            msg = j.get("header", {}).get("resultMessage") or j.get("message")
+        return {"ok": False, "status": r.status_code, "body": j, "error": msg or text}
 
 # ----- Slash: 버튼 한 개만 보이게 -----
 @app.post("/dooray/command")
@@ -98,23 +116,31 @@ async def actions(req: Request):
     data = await req.json()
     log.info("[IN/ACTIONS] %s", json.dumps(data, ensure_ascii=False))
 
-    # 1) 버튼 클릭: dlg-open
     if data.get("callbackId") == "dlg-open" and data.get("actionName") == "open":
-        # 액션 페이로드에서 원본 정보 추출
         tenant_domain = data.get("tenant", {}).get("domain") or data.get("tenantDomain")
-        channel_id    = data.get("channel", {}).get("id") or data.get("channelId")
+        channel_id    = data.get("channel", {}).get("id")    or data.get("channelId")
         cmd_token     = data.get("cmdToken")
         trigger_id    = data.get("triggerId")
+
         if not (tenant_domain and channel_id and cmd_token and trigger_id):
             return ok({"responseType":"ephemeral","text":"필수 값 누락(tenantDomain/channelId/cmdToken/triggerId)"})
 
         # 다이얼로그 열기
-        res = open_dialog(tenant_domain, channel_id, cmd_token, trigger_id)
-        if res.ok:
-            # 버튼 메시지 업데이트(혹은 간단 응답)
-            return ok({"responseType":"ephemeral", "replaceOriginal": True, "text": "📋 대화창을 열었습니다. 입력 후 제출하세요!"})
+        result = open_dialog(tenant_domain, channel_id, cmd_token, trigger_id)
+        if result["ok"]:
+            return ok({
+                "responseType": "ephemeral",
+                "replaceOriginal": True,
+                "text": "📋 대화창을 열었습니다. 입력 후 제출하세요!"
+            })
         else:
-            return ok({"responseType":"ephemeral", "text": f"대화창 열기 실패: {res.status_code}"})
+            # 실패 사유를 바로 보여주면 원인 파악 쉬움 (triggerId 만료/권한 문제/네트워크 등)
+            return ok({
+                "responseType": "ephemeral",
+                "replaceOriginal": False,
+                "text": f"⚠️ 대화창 열기 실패\n- status: {result['status']}\n- error: {result['error'] or 'unknown'}"
+            })
+
 
     # 2) 다이얼로그 제출
     if data.get("type") == "dialog_submission" and data.get("callbackId") == "sample-dialog":
