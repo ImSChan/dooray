@@ -154,8 +154,6 @@ async def coffee_actions(req: Request):
     # 변환 시, 해당 슬롯만 단계에 맞춰 교체한다.
     base_atts = [
         section_select(1),
-        section_select(2),
-        section_select(3),
     ]
 
     # 드롭다운(select)은 Dooray가 선택된 option의 value를 actionValue로 보냄
