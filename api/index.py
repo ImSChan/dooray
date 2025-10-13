@@ -64,45 +64,70 @@ def _get_state(channel_log_id: str, user_id: str, section: str):
                 "_ts": time.time(),
             }
         return cur
-
 # ---------- UI 빌더 ----------
-def section_block(section: str):
-    return {
+
+def section_blocks(section: str) -> list[dict]:
+    """섹션 UI를 2~3개의 attachment로 분리해서 세로 여백 확보"""
+    # 1) 제목 + 메뉴 드롭다운 (행1)
+    top = {
         "callbackId": "coffee-poll",
         "title": f"--------------[{section}]--------------",
         "actions": [
             {
                 "name": f"menu::{section}",
-                "text": "메뉴 선택               ",
+                "text": "메뉴 선택",
                 "type": "select",
-                "options": [{"text": f"[{section}] {m}", "value": m} for m in MENU_SECTIONS[section]]
-            },
+                "options": [
+                    {"text": f"[{section}] {m}", "value": m}
+                    for m in MENU_SECTIONS[section]
+                ],
+            }
+        ],
+    }
+
+    # 2) ICE/HOT + 사이즈 (행2)
+    middle = {
+        "callbackId": "coffee-poll",
+        "actions": [
             {
                 "name": f"temp::{section}",
                 "text": "ICE/HOT",
                 "type": "select",
-                "options": TEMP_OPTIONS
+                "options": TEMP_OPTIONS,
             },
             {
                 "name": f"size::{section}",
                 "text": "사이즈",
                 "type": "select",
-                "options": SIZE_OPTIONS
+                "options": SIZE_OPTIONS,
             },
+        ],
+    }
+
+    # (선택) 작은 스페이서 – 아주 살짝 더 띄우고 싶다면 사용
+    spacer = {"text": "\u00A0"}  # non-breaking space
+
+    # 3) 선택 버튼 (행3)
+    bottom = {
+        "callbackId": "coffee-poll",
+        "actions": [
             {
                 "name": f"vote::{section}",
                 "text": "선택",
                 "type": "button",
                 "value": f"vote|{section}",
-                "style": "primary"
+                "style": "primary",
             }
-        ]
+        ],
     }
+
+    return [top, middle, spacer, bottom]
+
 
 def status_attachment(fields=None):
     return {
-        "title": "선택 현황",
-        "fields": fields or [{"title":"아직 투표 없음","value":"첫 투표를 기다리는 중!","short":False}]
+        "title": "--------------선택 현황--------------",
+        "fields": fields or None
     }
 
 def pack(payload: dict) -> JSONResponse:
