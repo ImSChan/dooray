@@ -1,9 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "version": 2,
-  "functions": {
-    "api/index.py": {
-      "runtime": "vercel-python@3.11"
-    }
-  }
+  "routes": [
+    { "src": "^/dooray/command$", "dest": "api/index.py" },
+    { "src": "^/dooray/actions$", "dest": "api/index.py" }
+  ]
 }
