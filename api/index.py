@@ -25,7 +25,6 @@ def verify(req: Request):
         return JSONResponse({"text": "invalid token"}, status_code=401)
 
 # ----- Dialog opener -----
-
 def open_dialog(tenant_domain: str, channel_id: str, cmd_token: str, trigger_id: str):
     url = f"https://{tenant_domain}/messenger/api/channels/{channel_id}/dialogs"
     headers = {
@@ -33,7 +32,7 @@ def open_dialog(tenant_domain: str, channel_id: str, cmd_token: str, trigger_id:
         "Content-Type": "application/json; charset=utf-8",
     }
     body = {
-        "token": cmd_token,
+        "token": cmd_token,          # Dooray 예시처럼 바디에도 포함
         "triggerId": trigger_id,
         "callbackId": "sample-dialog",
         "dialog": {
@@ -41,12 +40,10 @@ def open_dialog(tenant_domain: str, channel_id: str, cmd_token: str, trigger_id:
             "title": "요청 등록",
             "submitLabel": "등록",
             "elements": [
-                {"type":"text","label":"제목","name":"title","minLength":2,"maxLength":50},
-                {"type":"textarea","label":"내용","name":"desc","minLength":5,"maxLength":500},
-                {"type":"select","label":"우선순위","name":"priority","value":"normal",
-                 "options":[{"label":"낮음","value":"low"},
-                            {"label":"보통","value":"normal"},
-                            {"label":"높음","value":"high"}]}
+                {"type": "text", "label": "제목", "name": "title", "minLength": 2, "maxLength": 50},
+                {"type": "textarea", "label": "내용", "name": "desc", "minLength": 5, "maxLength": 500},
+                {"type": "select", "label": "우선순위", "name": "priority", "value": "normal",
+                 "options": [{"label":"낮음","value":"low"},{"label":"보통","value":"normal"},{"label":"높음","value":"high"}]}
             ]
         }
     }
@@ -58,24 +55,28 @@ def open_dialog(tenant_domain: str, channel_id: str, cmd_token: str, trigger_id:
         log.exception("[DIALOG EXC] POST failed: %s", e)
         return {"ok": False, "status": None, "body": None, "error": str(e)}
 
-    text = r.text[:2000]
-    log.info("[DIALOG<RES] %s %s", r.status_code, text)
+    # 응답 로깅 (헤더 + 본문)
+    ctype = r.headers.get("content-type", "")
+    text  = (r.text or "")[:2000]
+    log.info("[DIALOG<RES] %s CT=%s BODY=%s", r.status_code, ctype, text)
 
-    # Dooray 표준 응답 파싱 시도
-    try:
-        j = r.json()
-    except Exception:
-        j = None
+    # 1) 본문 JSON 시도
+    j = None
+    if text:
+        try:
+            j = r.json()
+        except Exception:
+            j = None
 
-    # isSuccessful 검사(문서: $.header.isSuccessful)
-    if r.ok and isinstance(j, dict) and j.get("header", {}).get("isSuccessful") is True:
+    # 2) 성공 판정: 200 and (빈 바디 or header.isSuccessful True)
+    if r.status_code == 200 and (not text or (isinstance(j, dict) and j.get("header", {}).get("isSuccessful") is True)):
         return {"ok": True, "status": r.status_code, "body": j, "error": None}
-    else:
-        # 실패 메시지 뽑기 (가능하면 resultMessage)
-        msg = None
-        if isinstance(j, dict):
-            msg = j.get("header", {}).get("resultMessage") or j.get("message")
-        return {"ok": False, "status": r.status_code, "body": j, "error": msg or text}
+
+    # 3) 실패 메시지 추출
+    err = None
+    if isinstance(j, dict):
+        err = j.get("header", {}).get("resultMessage") or j.get("message")
+    return {"ok": False, "status": r.status_code, "body": j, "error": err or (text if text else "unknown")}
 
 # ----- Slash: 버튼 한 개만 보이게 -----
 @app.post("/dooray/command")
