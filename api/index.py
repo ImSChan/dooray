@@ -64,7 +64,7 @@ def make_item_attachment(slot: int) -> dict:
     }
 
 
-@app.post("/coffee/command")
+@app.post("/dooray/command")
 def coffee_command():
     payload = {
         "responseType": "inChannel",
