@@ -69,11 +69,11 @@ def _get_state(channel_log_id: str, user_id: str, section: str):
 def section_block(section: str):
     return {
         "callbackId": "coffee-poll",
-        "title": f"[{section}]",
+        "title": f"--------------[{section}]--------------",
         "actions": [
             {
                 "name": f"menu::{section}",
-                "text": "메뉴 선택",
+                "text": "메뉴 선택               ",
                 "type": "select",
                 "options": [{"text": f"[{section}] {m}", "value": m} for m in MENU_SECTIONS[section]]
             },
