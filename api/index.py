@@ -204,14 +204,24 @@ async def coffee_actions(req: Request):
     channel_log_id = str(data.get("channelLogId") or original.get("id") or "")
 
     # 드롭다운/전역설정: 상태만 저장, 메시지는 그대로(빈 200)
+    # --- /dooray/actions 핸들러 안, 드롭다운 처리 분기 ---
     if "::" in action_name and action_name.split("::",1)[0] in ("menu","temp"):
         kind, section = action_name.split("::",1)
         if section in MENU_SECTIONS or section == "__global__":
             if kind == "menu":
-                _set_state(channel_log_id, user_id, section, menu=action_value)
+                # 메뉴 갱신 + 섹션 temp 잔여치 제거 (전역 선택을 우선 적용시키기 위함)
+                with _state_lock:
+                    key = (channel_log_id, user_id, section)
+                    cur = _state.get(key, {"_ts": time.time()})
+                    cur["menu"] = action_value
+                    if "temp" in cur:
+                        del cur["temp"]        # ★ 섹션 temp 제거
+                    cur["_ts"] = time.time()
+                    _state[key] = cur
             elif kind == "temp":
                 _set_state(channel_log_id, user_id, section, temp=action_value)
         return pack({})
+
 
     # 전역 선택 버튼 눌렀을 때도 메시지 변경 없음
     if action_value == "apply_prefs":
