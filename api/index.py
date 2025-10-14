@@ -64,33 +64,40 @@ def _get_state(channel_log_id: str, user_id: str, section: str):
                 "_ts": time.time(),
             }
         return cur
+# 섹션별 포인트 컬러 & 이모지
+SECTION_STYLE = {
+    "추천메뉴": {"emoji": "✨", "color": "#7C3AED"},
+    "스무디":   {"emoji": "🍓", "color": "#06B6D4"},
+    "커피":     {"emoji": "☕", "color": "#F59E0B"},
+    "음료":     {"emoji": "🥤", "color": "#10B981"},
+    "병음료":   {"emoji": "🧃", "color": "#EF4444"},
+}
+
+def section_header(section: str) -> dict:
+    s = SECTION_STYLE.get(section, {"emoji":"•", "color":"#4757C4"})
+    return {
+        "callbackId": "coffee-poll",
+        "title": f"{s['emoji']}  {section}",
+        # 얇은 서브타이틀(있어도 되고 없어도 됨)
+        "text": "원하는 메뉴를 선택하세요",
+        # 왼쪽 세로 컬러바
+        "color": s["color"]
+    }
 
 # ---------- UI 빌더 (버튼 버전) ----------
 def section_blocks_buttons(section: str, per_row: int = 4) -> list[dict]:
-    """
-    섹션 제목 + (행1) ICE/HOT, 사이즈 드롭다운 + (여러 행) 메뉴 버튼들
-    - 버튼 name을 "menu::{section}" 으로 설정 → 기존 핸들러가 그대로 상태 저장
-    - 버튼 value/text = 실제 메뉴명
-    """
-    blocks: list[dict] = []
-
-    # 0) 섹션 제목
-    blocks.append({
-        "callbackId": "coffee-poll",
-        "title": f"--------------[{section}]--------------",
-        "actions": []  # 제목만 보이게 actions 비움
-    })
-
-
-    # 2) 메뉴 버튼들 (가로 per_row개씩 줄바꿈)
+    blocks = []
+    # 1) 헤더 카드
+    blocks.append(section_header(section))
+    # 2) 메뉴 버튼들
     menus = MENU_SECTIONS[section]
-    row: list[dict] = []
+    row = []
     for i, m in enumerate(menus, start=1):
         row.append({
-            "name": f"menu::{section}",     # <-- 기존 핸들러와 동일 키
+            "name": f"menu::{section}",
             "type": "button",
             "text": m,
-            "value": m,                      # 선택된 메뉴값
+            "value": m,
             "style": "default"
         })
         if i % per_row == 0:
