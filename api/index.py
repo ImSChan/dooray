@@ -64,11 +64,14 @@ def _get_state(channel_log_id: str, user_id: str, section: str):
         return cur
 
 def _get_effective_temp(channel_log_id: str, user_id: str, section: str):
-    # 섹션별 -> 전역(__global__) -> 기본값
-    st = _get_state(channel_log_id, user_id, section)
-    g  = _get_state(channel_log_id, user_id, "__global__")
-    temp = st.get("temp") or g.get("temp") or "HOT"
-    return temp
+    # 섹션에 명시 설정된 temp가 있으면 그것을, 없으면 전역(__global__) → 기본값 HOT
+    with _state_lock:
+        st = _state.get((channel_log_id, user_id, section), {})          # 명시 저장된 값만
+        g  = _state.get((channel_log_id, user_id, "__global__"), {})     # 전역 설정
+    temp = st.get("temp")
+    if temp is None or temp == "":
+        temp = g.get("temp")
+    return temp or "HOT"
 
 # ---------- 스타일 ----------
 SECTION_STYLE = {
@@ -132,10 +135,7 @@ def select_ice_or_hot():
     }
 
 def status_attachment(fields=None):
-    # Dooray가 fields: None을 싫어할 수 있으니 항상 최소 1개는 넣어준다
-    if not fields:
-        fields = [{"title":"아직 투표 없음","value":"첫 투표를 기다리는 중!","short":False}]
-    return {"title":"선택 현황","fields": fields}
+    return {"title":"선택 현황","fields": fields or None}
 
 
 def pack(payload: dict) -> JSONResponse:
