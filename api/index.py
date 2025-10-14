@@ -28,11 +28,10 @@ MENU_SECTIONS = {
     ],
 }
 TEMP_OPTIONS = [{"text":"HOT","value":"HOT"},{"text":"ICE","value":"ICE"}]  # HOT 기본
-SIZE_OPTIONS = [{"text":"사이즈업 X","value":"no"},{"text":"사이즈업","value":"yes"}]
 
 # ---------- 상태 저장 ----------
-# key: (channelLogId, userId, section) -> {"menu":..., "temp":..., "size":..., "_ts": ...}
-# section="__global__" 이면 전역 기본값(드롭다운 영역)으로 사용
+# key: (channelLogId, userId, section) -> {"menu":..., "temp":..., "_ts": ...}
+# section="__global__" 이면 전역 기본값(ICE/HOT)으로 사용
 _state = {}
 _state_lock = threading.Lock()
 _STATE_TTL = 60 * 60  # 1시간
@@ -47,7 +46,7 @@ def _cleanup_state():
 def _set_state(channel_log_id: str, user_id: str, section: str, **kwargs):
     with _state_lock:
         key = (channel_log_id, user_id, section)
-        cur = _state.get(key, {"menu": None, "temp": "HOT", "size": "no", "_ts": time.time()})
+        cur = _state.get(key, {"menu": None, "temp": "HOT", "_ts": time.time()})
         cur.update(kwargs)
         cur["_ts"] = time.time()
         _state[key] = cur
@@ -60,18 +59,16 @@ def _get_state(channel_log_id: str, user_id: str, section: str):
             cur = {
                 "menu": MENU_SECTIONS[section][0] if section in MENU_SECTIONS else None,
                 "temp": "HOT",
-                "size": "no",
                 "_ts": time.time(),
             }
         return cur
 
-def _get_effective_temp_size(channel_log_id: str, user_id: str, section: str):
+def _get_effective_temp(channel_log_id: str, user_id: str, section: str):
     # 섹션별 -> 전역(__global__) -> 기본값
     st = _get_state(channel_log_id, user_id, section)
     g  = _get_state(channel_log_id, user_id, "__global__")
     temp = st.get("temp") or g.get("temp") or "HOT"
-    size = st.get("size") or g.get("size") or "no"
-    return temp, size
+    return temp
 
 # ---------- 스타일 ----------
 SECTION_STYLE = {
@@ -90,7 +87,7 @@ def mention_member(tenant_id: str, user_id: str, label: str = "member") -> str:
     # Dooray 멤버 딥링크. 공백 포함하므로 현황 value는 개행으로 join/split 함
     return f'(dooray://{tenant_id}/members/{user_id} "{label}")'
 
-# ---------- UI 빌더 (드롭다운) ----------
+# ---------- UI 빌더 (드롭다운 + 투표 버튼) ----------
 def section_block_dropdown(section: str) -> list[dict]:
     s = SECTION_STYLE.get(section, {"emoji":"•", "color":"#4757C4"})
     return [
@@ -105,6 +102,13 @@ def section_block_dropdown(section: str) -> list[dict]:
                     "type": "select",
                     "options": [{"text": f"{m}", "value": m} for m in MENU_SECTIONS[section]],
                 },
+                {
+                    "name": f"vote::{section}",
+                    "text": "선택",
+                    "type": "button",
+                    "value": f"vote|{section}",
+                    "style": "primary",
+                },
             ],
         },
     ]
@@ -113,18 +117,11 @@ def select_ice_or_hot():
     # 전역 기본값 설정 영역 (__global__)
     return {
         "callbackId": "coffee-poll",
-        "title": "사이즈 선택",
-        "text": "사이즈를 선택해주세요",
+        "title": "ICE/HOT 선택",
+        "text": "온도를 선택해주세요",
         "actions": [
             {"name":"temp::__global__", "text":"ICE/HOT", "type":"select", "options": TEMP_OPTIONS},
-        ],
-    }
-def select_button():
-    
-    return {
-        "callbackId": "coffee-poll",
-        "actions": [
-            {"name":"apply_prefs", "text":"선택", "type":"button", "value":"apply_prefs", "style":"default"}
+            {"name":"apply_prefs", "text":"선택", "type":"button", "value":"apply_prefs", "style":"default"},
         ],
     }
 
@@ -175,8 +172,7 @@ async def coffee_command(req: Request):
     atts = []
     for s in ["추천메뉴","스무디","커피","음료","병음료"]:
         atts.extend(section_block_dropdown(s))
-    atts.append(select_ice_or_hot())     # 전역 기본값 선택 영역
-    atts.append(select_button())
+    atts.append(select_ice_or_hot())     # 전역 ICE/HOT 선택 영역
     atts.append(status_attachment())      # 현황
     return pack({"responseType":"inChannel","replaceOriginal":False,"text":"☕ 커피 투표 - 에뜨리에","attachments":atts})
 
@@ -193,15 +189,13 @@ async def coffee_actions(req: Request):
     channel_log_id = str(data.get("channelLogId") or original.get("id") or "")
 
     # 드롭다운/전역설정: 상태만 저장, 메시지는 그대로(빈 200)
-    if "::" in action_name and action_name.split("::",1)[0] in ("menu","temp","size"):
+    if "::" in action_name and action_name.split("::",1)[0] in ("menu","temp"):
         kind, section = action_name.split("::",1)
         if section in MENU_SECTIONS or section == "__global__":
             if kind == "menu":
                 _set_state(channel_log_id, user_id, section, menu=action_value)
             elif kind == "temp":
                 _set_state(channel_log_id, user_id, section, temp=action_value)
-            elif kind == "size":
-                _set_state(channel_log_id, user_id, section, size=action_value)
         return pack({})
 
     # 전역 선택 버튼 눌렀을 때도 메시지 변경 없음
@@ -213,9 +207,9 @@ async def coffee_actions(req: Request):
         _, section = action_value.split("|",1)
         st   = _get_state(channel_log_id, user_id, section)
         menu = st.get("menu") or (MENU_SECTIONS[section][0] if section in MENU_SECTIONS else "")
-        temp, size = _get_effective_temp_size(channel_log_id, user_id, section)
+        temp = _get_effective_temp(channel_log_id, user_id, section)
 
-        key = f"{section} / {menu} ({temp},{'사이즈업' if size=='yes' else '기본'})"
+        key = f"{section} / {menu} ({temp})"
 
         status = parse_status(original)
 
