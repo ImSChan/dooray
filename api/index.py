@@ -133,9 +133,10 @@ def select_ice_or_hot():
             {"name":"apply_vote", "text":"선택", "type":"button", "value":"apply_vote", "style":"default"},
         ],
     }
-
 def status_attachment(fields=None):
-    return {"title":"선택 현황","fields": fields or None}
+    if not fields:
+        fields = [{"title":"","value":"","short":False}]
+    return {"title":"선택 현황","fields": fields}
 
 
 def pack(payload: dict) -> JSONResponse:
