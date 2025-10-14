@@ -105,25 +105,6 @@ def section_block_dropdown(section: str) -> list[dict]:
                     "type": "select",
                     "options": [{"text": f"[{section}] {m}", "value": m} for m in MENU_SECTIONS[section]],
                 },
-                {
-                    "name": f"temp::{section}",
-                    "text": "ICE/HOT",
-                    "type": "select",
-                    "options": TEMP_OPTIONS,
-                },
-                {
-                    "name": f"size::{section}",
-                    "text": "사이즈",
-                    "type": "select",
-                    "options": SIZE_OPTIONS,
-                },
-                {
-                    "name": f"vote::{section}",
-                    "text": "선택",
-                    "type": "button",
-                    "value": f"vote|{section}",
-                    "style": "primary",
-                },
             ],
         },
     ]
@@ -136,7 +117,6 @@ def select_ice_or_hot():
         "text": "사이즈를 선택해주세요",
         "actions": [
             {"name":"temp::__global__", "text":"ICE/HOT", "type":"select", "options": TEMP_OPTIONS},
-            {"name":"size::__global__", "text":"사이즈",   "type":"select", "options": SIZE_OPTIONS},
             {"name":"apply_prefs", "text":"선택", "type":"button", "value":"apply_prefs", "style":"default"},
         ],
     }
