@@ -117,7 +117,14 @@ def select_ice_or_hot():
         "text": "사이즈를 선택해주세요",
         "actions": [
             {"name":"temp::__global__", "text":"ICE/HOT", "type":"select", "options": TEMP_OPTIONS},
-            {"name":"apply_prefs", "text":"선택", "type":"button", "value":"apply_prefs", "style":"default"},
+        ],
+    }
+def select_button():
+    
+    return {
+        "callbackId": "coffee-poll",
+        "actions": [
+            {"name":"apply_prefs", "text":"선택", "type":"button", "value":"apply_prefs", "style":"default"}
         ],
     }
 
@@ -169,6 +176,7 @@ async def coffee_command(req: Request):
     for s in ["추천메뉴","스무디","커피","음료","병음료"]:
         atts.extend(section_block_dropdown(s))
     atts.append(select_ice_or_hot())     # 전역 기본값 선택 영역
+    atts.append(select_button())
     atts.append(status_attachment())      # 현황
     return pack({"responseType":"inChannel","replaceOriginal":False,"text":"☕ 커피 투표 - 에뜨리에","attachments":atts})
 
