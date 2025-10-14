@@ -101,7 +101,7 @@ def section_block_dropdown(section: str) -> list[dict]:
             "actions": [
                 {
                     "name": f"menu::{section}",
-                    "text": "메뉴 선택                       ",
+                    "text": "메뉴 선택                        .",
                     "type": "select",
                     "options": [{"text": f"[{section}] {m}", "value": m} for m in MENU_SECTIONS[section]],
                 },
