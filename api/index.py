@@ -46,10 +46,13 @@ def _cleanup_state():
 def _set_state(channel_log_id: str, user_id: str, section: str, **kwargs):
     with _state_lock:
         key = (channel_log_id, user_id, section)
-        cur = _state.get(key, {"menu": None, "temp": "HOT", "_ts": time.time()})
-        cur.update(kwargs)
+        cur = _state.get(key, {"_ts": time.time()})
+        # 기본값 주입하지 말고, 전달된 필드만 갱신
+        for k, v in kwargs.items():
+            cur[k] = v
         cur["_ts"] = time.time()
         _state[key] = cur
+
 
 def _get_state(channel_log_id: str, user_id: str, section: str):
     _cleanup_state()
@@ -64,14 +67,15 @@ def _get_state(channel_log_id: str, user_id: str, section: str):
         return cur
 
 def _get_effective_temp(channel_log_id: str, user_id: str, section: str):
-    # 섹션에 명시 설정된 temp가 있으면 그것을, 없으면 전역(__global__) → 기본값 HOT
+    # 섹션에 temp가 명시 저장되어 있으면 우선, 아니면 전역(__global__) → 기본 HOT
     with _state_lock:
-        st = _state.get((channel_log_id, user_id, section), {})          # 명시 저장된 값만
-        g  = _state.get((channel_log_id, user_id, "__global__"), {})     # 전역 설정
+        st = _state.get((channel_log_id, user_id, section), {})
+        g  = _state.get((channel_log_id, user_id, "__global__"), {})
     temp = st.get("temp")
-    if temp is None or temp == "":
+    if not temp:
         temp = g.get("temp")
     return temp or "HOT"
+
 
 # ---------- 스타일 ----------
 SECTION_STYLE = {
