@@ -149,7 +149,7 @@ def pack(payload: dict) -> JSONResponse:
 def parse_status(original: dict) -> dict:
     result = {}
     for att in (original.get("attachments") or []):
-        if att.get("title") == "선택 현황":
+        if att.get("title") == "✅선택 현황":
             for f in (att.get("fields") or []):
                 k = f.get("title") or ""
                 vraw = (f.get("value") or "").strip()
