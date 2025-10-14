@@ -138,7 +138,6 @@ async def coffee_command(req: Request):
         "text": "☕ 커피 투표를 시작합니다!",
         "attachments": atts
     })
-
 # ---------- 인터랙션 ----------
 @app.post("/dooray/actions")
 async def coffee_actions(req: Request):
@@ -159,24 +158,40 @@ async def coffee_actions(req: Request):
         key = f"{menu} ({temp})"
         status = parse_status(original) or {}
 
-        # 중복투표 제거 후 본인 표만 남기기
+        # 내 이전 표 전부 제거(전역 1표 정책)
         tag = mention_member(tenant_id, user_id, label="member")
         for k in list(status.keys()):
-            status[k] = [u for u in (status.get(k) or []) if u != tag]
+            voters = [u for u in (status.get(k) or []) if u != tag]
+            if voters:
+                status[k] = voters
+            else:
+                # 투표자가 0명이면 항목 자체 제거
+                del status[k]
+
+        # 새 표 추가
         status.setdefault(key, [])
         if tag not in status[key]:
             status[key].append(tag)
 
+        # 현황만 교체
         new_atts = []
         replaced = False
         for att in (original.get("attachments") or []):
             if att.get("title") == "선택 현황":
-                new_atts.append(status_attachment(status_fields(status)))
+                new_atts.append({"title": "선택 현황", "fields": (
+                    [{"title": "아직 투표 없음", "value": "첫 투표를 기다리는 중!", "short": False}]
+                    if not status else
+                    [{"title": k, "value": " ".join(v) if v else "-", "short": False} for k, v in status.items()]
+                )})
                 replaced = True
             else:
                 new_atts.append(att)
         if not replaced:
-            new_atts.append(status_attachment(status_fields(status)))
+            new_atts.append({"title": "선택 현황", "fields": (
+                [{"title": "아직 투표 없음", "value": "첫 투표를 기다리는 중!", "short": False}]
+                if not status else
+                [{"title": k, "value": " ".join(v) if v else "-", "short": False} for k, v in status.items()]
+            )})
 
         return pack({
             "text": original.get("text") or "☕ 커피 투표",
