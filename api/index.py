@@ -30,8 +30,9 @@ MENU_SECTIONS = {
 TEMP_OPTIONS = [{"text":"HOT","value":"HOT"},{"text":"ICE","value":"ICE"}]  # HOT 기본
 SIZE_OPTIONS = [{"text":"사이즈업 X","value":"no"},{"text":"사이즈업","value":"yes"}]
 
-# ---------- “드롭다운 상태” 임시 저장소 ----------
-# key: (channelLogId, userId, section) -> {"menu":..., "temp":..., "size":...}
+# ---------- 상태 저장 ----------
+# key: (channelLogId, userId, section) -> {"menu":..., "temp":..., "size":..., "_ts": ...}
+# section="__global__" 이면 전역 기본값(드롭다운 영역)으로 사용
 _state = {}
 _state_lock = threading.Lock()
 _STATE_TTL = 60 * 60  # 1시간
@@ -56,15 +57,23 @@ def _get_state(channel_log_id: str, user_id: str, section: str):
     with _state_lock:
         cur = _state.get((channel_log_id, user_id, section))
         if not cur:
-            # 기본값: 메뉴는 섹션 첫 항목, temp=HOT, size=no
             cur = {
-                "menu": MENU_SECTIONS[section][0],
+                "menu": MENU_SECTIONS[section][0] if section in MENU_SECTIONS else None,
                 "temp": "HOT",
                 "size": "no",
                 "_ts": time.time(),
             }
         return cur
-# 섹션별 포인트 컬러 & 이모지
+
+def _get_effective_temp_size(channel_log_id: str, user_id: str, section: str):
+    # 섹션별 -> 전역(__global__) -> 기본값
+    st = _get_state(channel_log_id, user_id, section)
+    g  = _get_state(channel_log_id, user_id, "__global__")
+    temp = st.get("temp") or g.get("temp") or "HOT"
+    size = st.get("size") or g.get("size") or "no"
+    return temp, size
+
+# ---------- 스타일 ----------
 SECTION_STYLE = {
     "추천메뉴": {"emoji": "✨", "color": "#7C3AED"},
     "스무디":   {"emoji": "🍓", "color": "#06B6D4"},
@@ -72,68 +81,88 @@ SECTION_STYLE = {
     "음료":     {"emoji": "🥤", "color": "#10B981"},
     "병음료":   {"emoji": "🧃", "color": "#EF4444"},
 }
-
 def section_header(section: str) -> dict:
     s = SECTION_STYLE.get(section, {"emoji":"•", "color":"#4757C4"})
+    return {"callbackId":"coffee-poll","title":f"{s['emoji']}  {section}","color":s["color"]}
+
+# ---------- 멘션(태그) ----------
+def mention_member(tenant_id: str, user_id: str, label: str = "member") -> str:
+    # Dooray 멤버 딥링크. 공백 포함하므로 현황 value는 개행으로 join/split 함
+    return f'(dooray://{tenant_id}/members/{user_id} "{label}")'
+
+# ---------- UI 빌더 (드롭다운) ----------
+def section_block_dropdown(section: str) -> list[dict]:
+    color = SECTION_STYLE.get(section, {}).get("color", "#4757C4")
+    return [
+        section_header(section),
+        {
+            "callbackId": "coffee-poll",
+            "color": color,
+            "actions": [
+                {
+                    "name": f"menu::{section}",
+                    "text": "메뉴 선택",
+                    "type": "select",
+                    "options": [{"text": f"[{section}] {m}", "value": m} for m in MENU_SECTIONS[section]],
+                },
+                {
+                    "name": f"temp::{section}",
+                    "text": "ICE/HOT",
+                    "type": "select",
+                    "options": TEMP_OPTIONS,
+                },
+                {
+                    "name": f"size::{section}",
+                    "text": "사이즈",
+                    "type": "select",
+                    "options": SIZE_OPTIONS,
+                },
+                {
+                    "name": f"vote::{section}",
+                    "text": "선택",
+                    "type": "button",
+                    "value": f"vote|{section}",
+                    "style": "primary",
+                },
+            ],
+        },
+    ]
+
+def select_ice_or_hot():
+    # 전역 기본값 설정 영역 (__global__)
     return {
         "callbackId": "coffee-poll",
-        "title": f"{s['emoji']}  {section}",
-        # 얇은 서브타이틀(있어도 되고 없어도 됨)
-        "text": "원하는 메뉴를 선택하세요",
-        # 왼쪽 세로 컬러바
-        "color": s["color"]
+        "title": "사이즈 선택",
+        "text": "사이즈를 선택해주세요",
+        "actions": [
+            {"name":"temp::__global__", "text":"ICE/HOT", "type":"select", "options": TEMP_OPTIONS},
+            {"name":"size::__global__", "text":"사이즈",   "type":"select", "options": SIZE_OPTIONS},
+            {"name":"apply_prefs", "text":"선택", "type":"button", "value":"apply_prefs", "style":"default"},
+        ],
     }
-
-# ---------- UI 빌더 (버튼 버전) ----------
-def section_blocks_buttons(section: str, per_row: int = 4) -> list[dict]:
-    blocks = []
-    # 1) 헤더 카드
-    header = section_header(section)
-    blocks.append(header)
-    # 2) 메뉴 버튼들
-    menus = MENU_SECTIONS[section]
-    row = []
-    for i, m in enumerate(menus, start=1):
-        row.append({
-            "name": f"menu::{section}",
-            "type": "button",
-            "text": m,
-            "value": m,
-            "style": "default"
-        })
-        if i % per_row == 0:
-            blocks.append({"callbackId": "coffee-poll", "actions": row, "color": header["color"]})
-            row = []
-    if row:
-        blocks.append({"callbackId": "coffee-poll", "actions": row, "color": header["color"]})
-
-
-    return blocks
 
 def status_attachment(fields=None):
-    return {
-        "title": "--------------선택 현황--------------",
-        "fields": fields or None
-    }
+    return {"title":"선택 현황","fields": fields or None}
 
 def pack(payload: dict) -> JSONResponse:
     return JSONResponse(content=payload, media_type="application/json; charset=utf-8")
 
+# 현황 파서/포맷터 (개행으로 구분)
 def parse_status(original: dict) -> dict:
     result = {}
     for att in (original.get("attachments") or []):
         if att.get("title") == "선택 현황":
-            for f in att.get("fields", []):
+            for f in (att.get("fields") or []):
                 k = f.get("title") or ""
-                v = (f.get("value") or "").strip()
+                vraw = (f.get("value") or "").strip()
                 if k:
-                    result[k] = [x for x in v.split() if x]
+                    result[k] = [x for x in vraw.split("\n") if x]
     return result
 
 def status_fields(status: dict):
     if not status:
         return [{"title":"아직 투표 없음","value":"첫 투표를 기다리는 중!","short":False}]
-    return [{"title": k, "value": " ".join(v) if v else "-", "short": False} for k, v in status.items()]
+    return [{"title": k, "value": "\n".join(v) if v else "-", "short": False} for k, v in status.items()]
 
 # ---------- 커맨드 ----------
 @app.post("/dooray/command")
@@ -141,7 +170,6 @@ async def coffee_command(req: Request):
     data = await req.json()
     text = (data.get("text") or "").strip()
 
-    # 파라미터 처리
     if text == "":
         return pack({
             "responseType": "ephemeral",
@@ -159,58 +187,59 @@ async def coffee_command(req: Request):
     # 기본: 에뜨리에
     atts = []
     for s in ["추천메뉴","스무디","커피","음료","병음료"]:
-        atts.extend(section_blocks_buttons(s, per_row=4))  # per_row로 한 줄 버튼 개수 조절
-    atts.append(status_attachment())
+        atts.extend(section_block_dropdown(s))
+    atts.append(select_ice_or_hot())     # 전역 기본값 선택 영역
+    atts.append(status_attachment())      # 현황
     return pack({"responseType":"inChannel","replaceOriginal":False,"text":"☕ 커피 투표 - 에뜨리에","attachments":atts})
 
 # ---------- 인터랙션 ----------
 @app.post("/dooray/actions")
 async def coffee_actions(req: Request):
     data = await req.json()
-    action_name = data.get("actionName") or ""
+    action_name  = data.get("actionName") or ""
     action_value = (data.get("actionValue") or "").strip()
-    original = data.get("originalMessage") or {}
-    user = data.get("user") or {}
-    user_id = user.get("id","user")
-    user_email = user.get("email", user_id)
+    original     = data.get("originalMessage") or {}
+    user         = data.get("user") or {}
+    user_id      = user.get("id","user")
+    tenant_id    = (data.get("tenant") or {}).get("id","tenant")
     channel_log_id = str(data.get("channelLogId") or original.get("id") or "")
 
-    # 드롭다운 변경: 상태만 저장, 메시지는 그대로(=아무 업데이트 안 함)
-    # name 형식: "menu::섹션", "temp::섹션", "size::섹션"
+    # 드롭다운/전역설정: 상태만 저장, 메시지는 그대로(빈 200)
     if "::" in action_name and action_name.split("::",1)[0] in ("menu","temp","size"):
         kind, section = action_name.split("::",1)
-        if section in MENU_SECTIONS:
+        if section in MENU_SECTIONS or section == "__global__":
             if kind == "menu":
                 _set_state(channel_log_id, user_id, section, menu=action_value)
             elif kind == "temp":
                 _set_state(channel_log_id, user_id, section, temp=action_value)
             elif kind == "size":
                 _set_state(channel_log_id, user_id, section, size=action_value)
-        # 빈 200 OK (Dooray는 200/빈 응답 허용). 굳이 메시지 업데이트하지 않음.
         return pack({})
 
-    # 버튼: vote|섹션  → 상태 읽어 결과 반영
+    # 전역 선택 버튼 눌렀을 때도 메시지 변경 없음
+    if action_value == "apply_prefs":
+        return pack({})
+
+    # 투표 버튼: vote|섹션
     if action_value.startswith("vote|"):
         _, section = action_value.split("|",1)
-        # 해당 사용자 상태(없으면 기본값)
-        st = _get_state(channel_log_id, user_id, section)
-        menu = st["menu"] or MENU_SECTIONS[section][0]
-        temp = st["temp"] or "HOT"
-        size = st["size"] or "no"
+        st   = _get_state(channel_log_id, user_id, section)
+        menu = st.get("menu") or (MENU_SECTIONS[section][0] if section in MENU_SECTIONS else "")
+        temp, size = _get_effective_temp_size(channel_log_id, user_id, section)
 
         key = f"{section} / {menu} ({temp},{'사이즈업' if size=='yes' else '기본'})"
 
         status = parse_status(original)
 
-        # 중복투표 덮어쓰기: 모든 항목에서 사용자 제거 후 새 항목에 추가
+        # 중복투표 제거 후 새 항목에 추가 (멘션으로 저장)
+        tag = mention_member(tenant_id, user_id, label="member")
         for k in list(status.keys()):
-            if user_email in status[k]:
-                status[k] = [u for u in status[k] if u != user_email]
+            status[k] = [u for u in status[k] if u != tag]
         status.setdefault(key, [])
-        if user_email not in status[key]:
-            status[key].append(user_email)
+        if tag not in status[key]:
+            status[key].append(tag)
 
-        # 원래 UI(드롭다운들)는 그대로 두고, 현황만 업데이트
+        # 현황만 업데이트
         new_atts = []
         for att in (original.get("attachments") or []):
             if att.get("title") == "선택 현황":
