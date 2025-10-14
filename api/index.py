@@ -88,7 +88,8 @@ def section_header(section: str) -> dict:
 def section_blocks_buttons(section: str, per_row: int = 4) -> list[dict]:
     blocks = []
     # 1) 헤더 카드
-    blocks.append(section_header(section))
+    header = section_header(section)
+    blocks.append(header)
     # 2) 메뉴 버튼들
     menus = MENU_SECTIONS[section]
     row = []
@@ -101,10 +102,10 @@ def section_blocks_buttons(section: str, per_row: int = 4) -> list[dict]:
             "style": "default"
         })
         if i % per_row == 0:
-            blocks.append({"callbackId": "coffee-poll", "actions": row})
+            blocks.append({"callbackId": "coffee-poll", "actions": row, "color": header["color"]})
             row = []
     if row:
-        blocks.append({"callbackId": "coffee-poll", "actions": row})
+        blocks.append({"callbackId": "coffee-poll", "actions": row, "color": header["color"]})
 
 
     return blocks
