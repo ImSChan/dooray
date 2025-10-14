@@ -43,9 +43,9 @@ def pack(payload: dict) -> JSONResponse:
 def mention_member(tenant_id: str, user_id: str, label: str = "member") -> str:
     # Dooray 멤버 태깅 링크 (현황 value에는 그대로 문자열로 넣으면 Dooray가 렌더링함)
     return f'(dooray://{tenant_id}/members/{user_id} "{label}")'
-
+# 1) 현황 파싱: 줄바꿈 기준
 def parse_status(original: dict) -> dict:
-    """원본 메시지의 '선택 현황'을 dict로 파싱: { '메뉴 (TEMP)': [tag, tag, ...] }"""
+    """원본 메시지의 '선택 현황'을 dict로 파싱: { '메뉴 (TEMP)': [tag, ...] }"""
     result = {}
     for att in (original.get("attachments") or []):
         if att.get("title") == "선택 현황":
@@ -53,26 +53,25 @@ def parse_status(original: dict) -> dict:
                 k = (f.get("title") or "").strip()
                 vraw = (f.get("value") or "").strip()
                 if not k:
-                    continue  # 빈 제목 필드는 무시
-                # 태그 간 구분은 줄바꿈으로 처리 (태그 문자열 내부엔 \n이 없음)
+                    continue  # 빈 타이틀은 무시
                 vals = [line for line in vraw.split("\n") if line.strip()]
                 result[k] = vals
     return result
 
-
+# 2) 현황 표시: 줄바꿈으로 join
 def status_fields(status: dict):
-    """현황 dict -> Dooray fields 포맷"""
     if not status:
         return [{"title": "아직 투표 없음", "value": "첫 투표를 기다리는 중!", "short": False}]
-    # 태그들 사이를 줄바꿈으로 묶어 보여주기
-    return [{"title": k, "value": "\n".join(v) if v else "-", "short": False} for k, v in status.items()]
+    return [{"title": k, "value": "\n".join(v) if v else "-", "short": False}
+            for k, v in status.items()]
 
+# 3) placeholder 제거
 def status_attachment(fields=None):
-    # placeholder(빈 title/value) 넣지 말 것 — 파싱 시 잡음 발생
     return {
         "title": "선택 현황",
-        "fields": fields or [{"title": "", "value": "", "short": False}]
+        "fields": fields or [{"title": "아직 투표 없음", "value": "첫 투표를 기다리는 중!", "short": False}]
     }
+
 
 # ---------- UI 빌더 (버튼) ----------
 def section_block_buttons(section: str) -> list[dict]:
@@ -161,42 +160,36 @@ async def coffee_actions(req: Request):
         _, _section, menu, temp = parts
 
         key = f"{menu} ({temp})"
+        
         status = parse_status(original) or {}
 
-        # 내 이전 표 전부 제거(전역 1표 정책)
+        
+        # 내 이전 표 전부 제거(전역 1표)
         tag = mention_member(tenant_id, user_id, label="member")
         for k in list(status.keys()):
             voters = [u for u in (status.get(k) or []) if u != tag]
             if voters:
                 status[k] = voters
             else:
-                # 투표자가 0명이면 항목 자체 제거
                 del status[k]
 
         # 새 표 추가
+        key = f"{menu} ({temp})"
         status.setdefault(key, [])
         if tag not in status[key]:
             status[key].append(tag)
 
-        # 현황만 교체
-        new_atts = []
-        replaced = False
+        # 현황만 교체 (helper 사용)
+        fields = status_fields(status)
+        new_atts, replaced = [], False
         for att in (original.get("attachments") or []):
             if att.get("title") == "선택 현황":
-                new_atts.append({"title": "선택 현황", "fields": (
-                    [{"title": "아직 투표 없음", "value": "첫 투표를 기다리는 중!", "short": False}]
-                    if not status else
-                    [{"title": k, "value": " ".join(v) if v else "-", "short": False} for k, v in status.items()]
-                )})
+                new_atts.append(status_attachment(fields))
                 replaced = True
             else:
                 new_atts.append(att)
         if not replaced:
-            new_atts.append({"title": "선택 현황", "fields": (
-                [{"title": "아직 투표 없음", "value": "첫 투표를 기다리는 중!", "short": False}]
-                if not status else
-                [{"title": k, "value": " ".join(v) if v else "-", "short": False} for k, v in status.items()]
-            )})
+            new_atts.append(status_attachment(fields))
 
         return pack({
             "text": original.get("text") or "☕ 커피 투표",
