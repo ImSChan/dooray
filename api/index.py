@@ -160,7 +160,7 @@ def parse_status(original: dict) -> dict:
 def status_fields(status: dict):
     if not status:
         return [{"title":"아직 투표 없음","value":"첫 투표를 기다리는 중!","short":False}]
-    return [{"title": k, "value": "\n".join(v) if v else "-", "short": False} for k, v in status.items()]
+    return [{"title": k, "value": f"{v}" if v else "-", "short": False} for k, v in status.items()]
 
 # ---------- 커맨드 ----------
 @app.post("/dooray/command")
