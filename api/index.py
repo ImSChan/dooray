@@ -160,7 +160,7 @@ def parse_status(original: dict) -> dict:
 def status_fields(status: dict):
     if not status:
         return [{"title":"아직 투표 없음","value":"첫 투표를 기다리는 중!","short":False}]
-    return [{"title": k, "value": f"{v}" if v else "-", "short": False} for k, v in status.items()]
+    return [{"title": k, "value": "".join(v) if v else "-", "short": False} for k, v in status.items()]
 
 # ---------- 커맨드 ----------
 @app.post("/dooray/command")
@@ -242,7 +242,7 @@ async def coffee_actions(req: Request):
         if not tenant_id:
             tenant_id = str((data.get("tenant") or {}).get("id") or "tenant")
 
-        key = f"{section} / {menu} ({temp})"
+        key = f"{menu} ({temp})"
         status = parse_status(original) or {}
 
         # 중복투표 제거 후 새 항목에 본인 멘션 추가
