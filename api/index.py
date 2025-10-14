@@ -139,7 +139,7 @@ def select_ice_or_hot():
 def status_attachment(fields=None):
     if not fields:
         fields = [{"title":"","value":"","short":False}]
-    return {"title":"✅선택 현황","fields": fields}
+    return {"title":"선택 현황","fields": fields}
 
 
 def pack(payload: dict) -> JSONResponse:
@@ -149,7 +149,7 @@ def pack(payload: dict) -> JSONResponse:
 def parse_status(original: dict) -> dict:
     result = {}
     for att in (original.get("attachments") or []):
-        if att.get("title") == "✅선택 현황":
+        if att.get("title") == "선택 현황":
             for f in (att.get("fields") or []):
                 k = f.get("title") or ""
                 vraw = (f.get("value") or "").strip()
