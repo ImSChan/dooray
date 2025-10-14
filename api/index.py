@@ -92,12 +92,12 @@ def mention_member(tenant_id: str, user_id: str, label: str = "member") -> str:
 
 # ---------- UI 빌더 (드롭다운) ----------
 def section_block_dropdown(section: str) -> list[dict]:
-    color = SECTION_STYLE.get(section, {}).get("color", "#4757C4")
+    s = SECTION_STYLE.get(section, {"emoji":"•", "color":"#4757C4"})
     return [
-        section_header(section),
         {
             "callbackId": "coffee-poll",
-            "color": color,
+            "title":f"{s['emoji']}  {section}",
+            "color":s["color"],
             "actions": [
                 {
                     "name": f"menu::{section}",
