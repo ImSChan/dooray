@@ -132,7 +132,11 @@ def select_ice_or_hot():
     }
 
 def status_attachment(fields=None):
-    return {"title":"선택 현황","fields": fields or None}
+    # Dooray가 fields: None을 싫어할 수 있으니 항상 최소 1개는 넣어준다
+    if not fields:
+        fields = [{"title":"아직 투표 없음","value":"첫 투표를 기다리는 중!","short":False}]
+    return {"title":"선택 현황","fields": fields}
+
 
 def pack(payload: dict) -> JSONResponse:
     return JSONResponse(content=payload, media_type="application/json; charset=utf-8")
@@ -209,32 +213,50 @@ async def coffee_actions(req: Request):
         return pack({})
     # 5) [최종 반영] (채널 메시지 버튼) → 원본 메시지의 "선택 현황"만 갱신
     if action_value == "apply_vote":
+        # 0) 방어적 로깅
+        # print(f"[apply_vote] chlog={channel_log_id} user={user_id}")
+
         latest = _get_latest_selection(channel_log_id, user_id)
         if not latest:
-            # 아직 아무 메뉴도 고른 적이 없으면 조용히 OK (또는 에페메럴 경고를 주고 싶으면 여기서 반환)
-            return pack({})
+            # 아직 메뉴 드롭다운을 한 번도 안 건드렸으면 에페메럴 안내
+            return pack({
+                "responseType": "ephemeral",
+                "text": "먼저 메뉴를 하나 선택해 주세요. (상단 섹션의 드롭다운)"
+            })
 
         section, menu = latest
         temp = _get_effective_temp(channel_log_id, user_id, section)
 
+        # 멘션용 tenant_id 안전 보정
+        if not tenant_id:
+            tenant_id = str((data.get("tenant") or {}).get("id") or "tenant")
+
         key = f"{section} / {menu} ({temp})"
-        status = parse_status(original)
+        status = parse_status(original) or {}
 
         # 중복투표 제거 후 새 항목에 본인 멘션 추가
         tag = mention_member(tenant_id, user_id, label="member")
         for k in list(status.keys()):
-            status[k] = [u for u in status[k] if u != tag]
+            status[k] = [u for u in (status.get(k) or []) if u != tag]
         status.setdefault(key, [])
         if tag not in status[key]:
             status[key].append(tag)
 
-        # 원본의 "카테고리/ICE-HOT" 등은 유지, "선택 현황"만 교체
+        # 현황 필드 만들기 (빈 상태도 최소 1개 필드 보장)
+        fields = status_fields(status)
+
+        # 원본의 다른 블록은 그대로 두고, "선택 현황"만 교체
         new_atts = []
+        replaced = False
         for att in (original.get("attachments") or []):
             if att.get("title") == "선택 현황":
-                new_atts.append(status_attachment(status_fields(status)))
+                new_atts.append(status_attachment(fields))
+                replaced = True
             else:
                 new_atts.append(att)
+        if not replaced:
+            # 혹시 원본에 현황 블록이 없으면 추가
+            new_atts.append(status_attachment(fields))
 
         return pack({
             "text": original.get("text") or "☕ 커피 투표",
@@ -242,6 +264,7 @@ async def coffee_actions(req: Request):
             "responseType":"inChannel",
             "replaceOriginal": True
         })
+
 
     # 투표 버튼: vote|섹션
     if action_value.startswith("vote|"):
