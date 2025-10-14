@@ -129,17 +129,17 @@ def select_ice_or_hot():
     # 전역 기본값 설정 영역 (__global__)
     return {
         "callbackId": "coffee-poll",
-        "title": "ICE/HOT 선택",
+        "title": "🧊ICE/🌡️HOT 선택",
         "text": "온도를 선택해주세요",
         "actions": [
             {"name":"temp::__global__", "text":"ICE/HOT", "type":"select", "options": TEMP_OPTIONS},
-            {"name":"apply_vote", "text":"선택", "type":"button", "value":"apply_vote", "style":"default"},
+            {"name":"apply_vote", "text":"선택", "type":"button", "value":"apply_vote", "style":"primary"},
         ],
     }
 def status_attachment(fields=None):
     if not fields:
         fields = [{"title":"","value":"","short":False}]
-    return {"title":"선택 현황","fields": fields}
+    return {"title":"✅선택 현황","fields": fields}
 
 
 def pack(payload: dict) -> JSONResponse:
