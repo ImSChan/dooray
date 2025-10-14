@@ -127,7 +127,7 @@ def select_ice_or_hot():
         "text": "온도를 선택해주세요",
         "actions": [
             {"name":"temp::__global__", "text":"ICE/HOT", "type":"select", "options": TEMP_OPTIONS},
-            {"name":"apply_prefs", "text":"선택", "type":"button", "value":"apply_prefs", "style":"default"},
+            {"name":"apply_vote", "text":"선택", "type":"button", "value":"apply_vote", "style":"default"},
         ],
     }
 
