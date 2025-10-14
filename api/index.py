@@ -222,59 +222,56 @@ async def coffee_actions(req: Request):
     # 전역 선택 버튼 눌렀을 때도 메시지 변경 없음
     if action_value == "apply_prefs":
         return pack({})
-    # 5) [최종 반영] (채널 메시지 버튼) → 원본 메시지의 "선택 현황"만 갱신
+    # 5) [최종 반영] (채널 메시지 버튼) → 현황 갱신 + 드롭다운 초기화
     if action_value == "apply_vote":
-        # 0) 방어적 로깅
-        # print(f"[apply_vote] chlog={channel_log_id} user={user_id}")
-
         latest = _get_latest_selection(channel_log_id, user_id)
         if not latest:
-            # 아직 메뉴 드롭다운을 한 번도 안 건드렸으면 에페메럴 안내
-            return pack({
-                "responseType": "ephemeral",
-                "text": "먼저 메뉴를 하나 선택해 주세요. (상단 섹션의 드롭다운)"
-            })
+            return pack({"responseType": "ephemeral",
+                        "text": "먼저 메뉴를 하나 선택해 주세요. (상단 섹션의 드롭다운)"})
 
         section, menu = latest
         temp = _get_effective_temp(channel_log_id, user_id, section)
 
-        # 멘션용 tenant_id 안전 보정
-        if not tenant_id:
-            tenant_id = str((data.get("tenant") or {}).get("id") or "tenant")
+        # 멘션 문자열
+        tag = mention_member(tenant_id or (data.get("tenant") or {}).get("id") or "tenant",
+                            user_id, label="member")
 
-        key = f"{section} / {menu} ({temp})"
+        # 1) 현황 업데이트
         status = parse_status(original) or {}
-
-        # 중복투표 제거 후 새 항목에 본인 멘션 추가
-        tag = mention_member(tenant_id, user_id, label="member")
+        # 중복 제거
         for k in list(status.keys()):
             status[k] = [u for u in (status.get(k) or []) if u != tag]
+        key = f"{section} / {menu} ({temp})"
         status.setdefault(key, [])
         if tag not in status[key]:
             status[key].append(tag)
 
-        # 현황 필드 만들기 (빈 상태도 최소 1개 필드 보장)
         fields = status_fields(status)
 
-        # 원본의 다른 블록은 그대로 두고, "선택 현황"만 교체
+        # 2) 사용자의 섹션별 menu 상태 초기화(선택값 잔상 제거)
+        with _state_lock:
+            for sec in MENU_SECTIONS.keys():
+                skey = (channel_log_id, user_id, sec)
+                if skey in _state and "menu" in _state[skey]:
+                    del _state[skey]["menu"]
+                # 타임스탬프 갱신(선택 기록 초기화 의미)
+                if skey in _state:
+                    _state[skey]["_ts"] = time.time()
+
+        # 3) 메시지 전체를 재구성 → 드롭다운이 기본 상태로 표시됨
         new_atts = []
-        replaced = False
-        for att in (original.get("attachments") or []):
-            if att.get("title") == "선택 현황":
-                new_atts.append(status_attachment(fields))
-                replaced = True
-            else:
-                new_atts.append(att)
-        if not replaced:
-            # 혹시 원본에 현황 블록이 없으면 추가
-            new_atts.append(status_attachment(fields))
+        for s in ["추천메뉴","스무디","커피","음료","병음료"]:
+            new_atts.extend(section_block_dropdown(s))
+        new_atts.append(select_ice_or_hot())           # 전역 ICE/HOT 블록은 그대로 사용(표시는 placeholder)
+        new_atts.append(status_attachment(fields))      # 최신 현황 붙이기
 
         return pack({
             "text": original.get("text") or "☕ 커피 투표",
             "attachments": new_atts,
-            "responseType":"inChannel",
-            "replaceOriginal": True
+            "responseType": "inChannel",
+            "replaceOriginal": True   # ← 전체 교체: 드롭다운 UI가 초기화됨
         })
+
 
 
     # 투표 버튼: vote|섹션
