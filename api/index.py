@@ -102,7 +102,7 @@ def section_block_buttons(section: str) -> list[dict]:
         })
 
         # 🔥 스무디 제외하고 HOT 버튼 생성
-        if section != "스무디":
+        if section not in ["스무디", "병음료"] and m not in ["복숭아 아이스티", "딸기라떼"]:
             actions.append({
                 "name": f"vote::{section}",
                 "type": "button",
