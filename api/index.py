@@ -102,7 +102,11 @@ def section_block_buttons(section: str) -> list[dict]:
         })
 
         # 🔥 스무디 제외하고 HOT 버튼 생성
-        if section not in ["스무디", "병음료"] and m not in ["복숭아 아이스티", "딸기라떼"]:
+        if (
+            section not in ["스무디", "병음료"]
+            and m not in ["복숭아 아이스티", "딸기라떼"]
+            and "요거트" not in m
+        ):
             actions.append({
                 "name": f"vote::{section}",
                 "type": "button",
@@ -125,20 +129,20 @@ async def coffee_command(req: Request):
     data = await req.json()
     text = (data.get("text") or "").strip()
 
-    if text == "":
-        return pack({
-            "responseType": "ephemeral",
-            "text": "☕ 커피 투표: 매장을 선택하세요",
-            "attachments": [
-                {"callbackId":"coffee-start","actions":[
-                    {"name":"start","type":"button","text":"에뜨리에 시작","value":"start|에뜨리에","style":"primary"},
-                    {"name":"start","type":"button","text":"에뜰 (미지원)","value":"start|에뜰"}
-                ]}
-            ]
-        })
+    # if text == "":
+    #     return pack({
+    #         "responseType": "ephemeral",
+    #         "text": "☕ 커피 투표: 매장을 선택하세요",
+    #         "attachments": [
+    #             {"callbackId":"coffee-start","actions":[
+    #                 {"name":"start","type":"button","text":"에뜨리에 시작","value":"start|에뜨리에","style":"primary"},
+    #                 {"name":"start","type":"button","text":"에뜰 (미지원)","value":"start|에뜰"}
+    #             ]}
+    #         ]
+    #     })
 
-    if text == "에뜰":
-        return pack({"responseType":"ephemeral","text":"🚫 아직 '에뜰'은 지원하지 않아요. '에뜨리에'로 시도해 주세요."})
+    # if text == "에뜰":
+    #    return pack({"responseType":"ephemeral","text":"🚫 아직 '에뜰'은 지원하지 않아요. '에뜨리에'로 시도해 주세요."})
 
     # 기본: 에뜨리에
     atts = []
