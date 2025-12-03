@@ -77,36 +77,46 @@ def status_attachment(fields=None):
 def section_block_buttons(section: str) -> list[dict]:
     """
     섹션 헤더 + 메뉴별 (ICE)/(HOT) 버튼 한 묶음 생성.
+    스무디류는 HOT 버튼을 제거한다.
     버튼 value 형식: vote|{section}|{menu}|{temp}
     """
     s = SECTION_STYLE.get(section, {"emoji": "•", "color": "#4757C4"})
     blocks = []
-    # 헤더
+
+    # 헤더 블록
     blocks.append({
         "callbackId": "coffee-poll",
         "title": f"{s['emoji']}  {section}",
         "color": s["color"],
     })
-    # 모든 메뉴 버튼(ICE/HOT) 한 블록에 나열
+
     actions = []
     for m in MENU_SECTIONS[section]:
+
+        # 공통 ICE 버튼
         actions.append({
             "name": f"vote::{section}",
             "type": "button",
             "text": f"{m} (ICE)",
             "value": f"vote|{section}|{m}|ICE",
         })
-        actions.append({
-            "name": f"vote::{section}",
-            "type": "button",
-            "text": f"{m} (HOT)",
-            "value": f"vote|{section}|{m}|HOT",
-        })
+
+        # 🔥 스무디 제외하고 HOT 버튼 생성
+        if section != "스무디":
+            actions.append({
+                "name": f"vote::{section}",
+                "type": "button",
+                "text": f"{m} (HOT)",
+                "value": f"vote|{section}|{m}|HOT",
+            })
+
+    # 버튼 블록 추가
     blocks.append({
         "callbackId": "coffee-poll",
         "actions": actions,
         "color": s["color"],
     })
+
     return blocks
 
 # ---------- 커맨드 ----------
