@@ -286,17 +286,16 @@ async def open_dialog(
 
 
 @app.post("/dooray/test")
+
 async def test_dialog(req: Request):
     data = await req.json()
     print("[TEST DIALOG]", data)
 
-    tenant = data.get("tenant") or {}
-    channel = data.get("channel") or {}
-
-    tenant_domain = tenant.get("domain")
-    channel_id = channel.get("id")
-    cmd_token = data.get("cmdToken")
-    trigger_id = data.get("triggerId")
+    # Dooray Slash Command 실제 필드 구조
+    tenant_domain = data.get("tenantDomain")
+    channel_id    = data.get("channelId")
+    cmd_token     = data.get("cmdToken")
+    trigger_id    = data.get("triggerId")
 
     if not all([tenant_domain, channel_id, cmd_token, trigger_id]):
         return pack({
@@ -311,7 +310,8 @@ async def test_dialog(req: Request):
         trigger_id=trigger_id,
     )
 
-    # Dialog는 별도 API로 뜨기 때문에
-    # 커맨드 응답은 비워도 OK
+    print("[DIALOG API RESULT]", status, body)
+
+    # Dialog는 별도 API로 표시되므로 커맨드 응답은 비워도 됨
     return JSONResponse(status_code=200, content={})
 
