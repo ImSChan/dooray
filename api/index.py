@@ -237,46 +237,22 @@ async def open_dialog(
     payload = {
         "token": cmd_token,
         "triggerId": trigger_id,
-        "callbackId": "coffee-test-dialog",
+        "callbackId": f"coffee-test-{trigger_id}",
         "dialog": {
-            "callbackId": "coffee-test-dialog",
-            "title": "☕ 커피 투표 옵션",
-            "submitLabel": "투표하기",
+            "callbackId": f"coffee-test-{trigger_id}",
+            "title": "☕ 테스트 Dialog",
+            "submitLabel": "확인",
             "elements": [
                 {
-                    "type": "select",
-                    "label": "온도 선택",
-                    "name": "temp",
-                    "value": "ICE",
-                    "optional": False,
-                    "options": [
-                        {"label": "ICE", "value": "ICE"},
-                        {"label": "HOT", "value": "HOT"},
-                    ],
-                },
-                {
-                    "type": "select",
-                    "label": "카테고리",
-                    "name": "section",
-                    "optional": False,
-                    "options": [
-                        {"label": "커피", "value": "커피"},
-                        {"label": "스무디", "value": "스무디"},
-                        {"label": "음료", "value": "음료"},
-                    ],
-                },
-                {
                     "type": "text",
-                    "label": "메뉴명",
-                    "name": "menu",
-                    "placeholder": "예: 아메리카노",
-                    "minLength": 1,
-                    "maxLength": 20,
-                    "optional": False,
-                },
-            ],
-        },
+                    "label": "아무거나 입력",
+                    "name": "test",
+                    "optional": False
+                }
+            ]
+        }
     }
+
 
     async with httpx.AsyncClient(timeout=5.0) as client:
         resp = await client.post(url, headers=headers, json=payload)
