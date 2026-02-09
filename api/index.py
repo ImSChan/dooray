@@ -220,32 +220,26 @@ async def coffee_actions(req: Request):
 
 
 
-
-async def open_dialog(
-    tenant_domain: str,
-    channel_id: str,
-    cmd_token: str,
-    trigger_id: str,
-):
+async def open_dialog(tenant_domain, channel_id, cmd_token, trigger_id):
     url = f"https://{tenant_domain}/messenger/api/channels/{channel_id}/dialogs"
-    print(url)
+
     headers = {
-        "token": cmd_token,
         "Content-Type": "application/json",
+        "token": cmd_token,
     }
 
     payload = {
         "token": cmd_token,
         "triggerId": trigger_id,
-        "callbackId": f"coffee-test-{trigger_id}",
+        "callbackId": f"test-dialog-{trigger_id}",
         "dialog": {
-            "callbackId": f"coffee-test-{trigger_id}",
-            "title": "☕ 테스트 Dialog",
+            "callbackId": f"test-dialog-{trigger_id}",
+            "title": "🧪 테스트 Dialog",
             "submitLabel": "확인",
             "elements": [
                 {
                     "type": "text",
-                    "label": "아무거나 입력",
+                    "label": "아무 값 입력",
                     "name": "test",
                     "optional": False
                 }
@@ -253,32 +247,60 @@ async def open_dialog(
         }
     }
 
-
-    async with httpx.AsyncClient(timeout=5.0) as client:
+    async with httpx.AsyncClient(timeout=3.0) as client:
         resp = await client.post(url, headers=headers, json=payload)
 
-    return resp.status_code, resp
-
+    return resp.status_code, resp.text
 
 
 @app.post("/dooray/test")
-
-async def test_dialog(req: Request):
+async def dooray_test(req: Request):
     data = await req.json()
-    print("[TEST DIALOG]", data)
+    print("[SLASH TEST]", data)
 
-    # Dooray Slash Command 실제 필드 구조
-    tenant_domain = data.get("tenantDomain")
-    channel_id    = data.get("channelId")
-    cmd_token     = data.get("cmdToken")
-    trigger_id    = data.get("triggerId")
+    return pack({
+        "responseType": "ephemeral",
+        "text": "🧪 Dialog 테스트",
+        "attachments": [
+            {
+                "callbackId": "open-dialog-test",
+                "actions": [
+                    {
+                        "name": "open_dialog",
+                        "type": "button",
+                        "text": "대화창 열기",
+                        "value": "open_dialog"
+                    }
+                ]
+            }
+        ]
+    })
 
+@app.post("/dooray/interactive")
+async def dooray_interactive(req: Request):
+    data = await req.json()
+    print("[INTERACTIVE]", data)
+
+    action_value = data.get("actionValue")
+    trigger_id = data.get("triggerId")
+    cmd_token = data.get("cmdToken")
+
+    tenant = data.get("tenant") or {}
+    channel = data.get("channel") or {}
+
+    tenant_domain = tenant.get("domain")
+    channel_id = channel.get("id")
+
+    # 버튼이 아닌 경우 무시
+    if action_value != "open_dialog":
+        return JSONResponse(status_code=200, content={})
+
+    # 필수 값 체크
     if not all([tenant_domain, channel_id, cmd_token, trigger_id]):
-        return pack({
-            "responseType": "ephemeral",
-            "text": "❌ Dialog 테스트에 필요한 값이 부족합니다."
-        })
+        print("❌ missing dialog params")
+        return JSONResponse(status_code=200, content={})
 
+    # ===== Dialog 호출 =====
     status, body = await open_dialog(
         tenant_domain=tenant_domain,
         channel_id=channel_id,
@@ -286,8 +308,8 @@ async def test_dialog(req: Request):
         trigger_id=trigger_id,
     )
 
-    print("[DIALOG API RESULT]", status, body)
+    print("[DIALOG RESULT]", status, body)
 
-    # Dialog는 별도 API로 표시되므로 커맨드 응답은 비워도 됨
+    # interactive 응답은 항상 200 + 빈 body
     return JSONResponse(status_code=200, content={})
 
