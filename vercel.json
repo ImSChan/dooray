@@ -3,6 +3,7 @@
   "routes": [
     { "src": "^/dooray/command$", "dest": "api/index.py" },
     { "src": "^/dooray/actions$", "dest": "api/index.py" },
+    { "src": "^/dooray/interactive$", "dest": "api/index.py" },
     { "src": "^/dooray/test$", "dest": "api/index.py" }
   ]
 }
