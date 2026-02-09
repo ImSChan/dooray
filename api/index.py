@@ -1,5 +1,6 @@
 # api/index.py
 from fastapi import FastAPI, Request
+from fastapi import BackgroundTasks
 from fastapi.responses import JSONResponse
 import httpx
 
@@ -294,13 +295,15 @@ async def dooray_test(req: Request):
             }
         ]
     })
-
 @app.post("/dooray/interactive")
-async def dooray_interactive(req: Request):
+async def dooray_interactive(req: Request, background: BackgroundTasks):
     data = await req.json()
     print("[INTERACTIVE]", data)
 
     action_value = data.get("actionValue")
+    if action_value != "open_dialog":
+        return JSONResponse(status_code=200, content={})
+
     trigger_id = data.get("triggerId")
     cmd_token = data.get("cmdToken")
 
@@ -310,25 +313,18 @@ async def dooray_interactive(req: Request):
     tenant_domain = tenant.get("domain")
     channel_id = channel.get("id")
 
-    # 버튼이 아닌 경우 무시
-    if action_value != "open_dialog":
-        return JSONResponse(status_code=200, content={})
-
-    # 필수 값 체크
     if not all([tenant_domain, channel_id, cmd_token, trigger_id]):
-        print("❌ missing dialog params")
         return JSONResponse(status_code=200, content={})
 
-    # ===== Dialog 호출 =====
-    status, body = await open_dialog(
-        tenant_domain=tenant_domain,
-        channel_id=channel_id,
-        cmd_token=cmd_token,
-        trigger_id=trigger_id,
+    # 🔥 Dialog 호출을 Background로 분리
+    background.add_task(
+        open_dialog,
+        tenant_domain,
+        channel_id,
+        cmd_token,
+        trigger_id,
     )
 
-    print("[DIALOG RESULT]", status, body)
-
-    # interactive 응답은 항상 200 + 빈 body
+    # 🔥 Dooray에는 즉시 응답
     return JSONResponse(status_code=200, content={})
 
