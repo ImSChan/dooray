@@ -248,7 +248,7 @@ async def open_dialog(
                     "label": "온도 선택",
                     "name": "temp",
                     "value": "ICE",
-                    "optional": false,
+                    "optional": False,
                     "options": [
                         {"label": "ICE", "value": "ICE"},
                         {"label": "HOT", "value": "HOT"},
@@ -258,7 +258,7 @@ async def open_dialog(
                     "type": "select",
                     "label": "카테고리",
                     "name": "section",
-                    "optional": false,
+                    "optional": False,
                     "options": [
                         {"label": "커피", "value": "커피"},
                         {"label": "스무디", "value": "스무디"},
