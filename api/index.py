@@ -231,9 +231,9 @@ async def open_dialog(tenant_domain, channel_id, cmd_token, trigger_id):
     payload = {
         "token": cmd_token,
         "triggerId": trigger_id,
-        "callbackId": f"test-dialog-{trigger_id}",
+        "callbackId": f"open-dialog-test",
         "dialog": {
-            "callbackId": f"test-dialog-{trigger_id}",
+            "callbackId": f"open-dialog-test",
             "title": "🧪 테스트 Dialog",
             "submitLabel": "확인",
             "elements": [
