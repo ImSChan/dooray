@@ -247,8 +247,27 @@ async def open_dialog(tenant_domain, channel_id, cmd_token, trigger_id):
         }
     }
 
-    async with httpx.AsyncClient(timeout=3.0) as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(url, headers=headers, json=payload)
+
+    
+    print("===== DIALOG RAW RESPONSE =====")
+    print("status :", resp.status_code)
+    print("headers:", dict(resp.headers))
+    print("body   :", resp.text)
+
+    # JSON 파싱 시도
+    try:
+        body_json = resp.json()
+        print("parsed :", json.dumps(body_json, indent=2, ensure_ascii=False))
+
+        header = body_json.get("header")
+        if header:
+            print("Dooray header.isSuccessful:", header.get("isSuccessful"))
+            print("Dooray header.resultCode  :", header.get("resultCode"))
+            print("Dooray header.resultMsg   :", header.get("resultMessage"))
+    except Exception as e:
+        print("JSON parse failed:", e)
 
     return resp.status_code, resp.text
 
