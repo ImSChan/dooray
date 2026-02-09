@@ -1,6 +1,8 @@
 # api/index.py
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+import httpx
+
 
 app = FastAPI(title="Coffee Poll – one-click buttons")
 
@@ -215,3 +217,101 @@ async def coffee_actions(req: Request):
 
     # 그 외는 무시
     return pack({})
+
+
+
+
+async def open_dialog(
+    tenant_domain: str,
+    channel_id: str,
+    cmd_token: str,
+    trigger_id: str,
+):
+    url = f"https://{tenant_domain}/messenger/api/channels/{channel_id}/dialogs"
+
+    headers = {
+        "token": cmd_token,
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "token": cmd_token,
+        "triggerId": trigger_id,
+        "callbackId": "coffee-test-dialog",
+        "dialog": {
+            "callbackId": "coffee-test-dialog",
+            "title": "☕ 커피 투표 옵션",
+            "submitLabel": "투표하기",
+            "elements": [
+                {
+                    "type": "select",
+                    "label": "온도 선택",
+                    "name": "temp",
+                    "value": "ICE",
+                    "optional": false,
+                    "options": [
+                        {"label": "ICE", "value": "ICE"},
+                        {"label": "HOT", "value": "HOT"},
+                    ],
+                },
+                {
+                    "type": "select",
+                    "label": "카테고리",
+                    "name": "section",
+                    "optional": false,
+                    "options": [
+                        {"label": "커피", "value": "커피"},
+                        {"label": "스무디", "value": "스무디"},
+                        {"label": "음료", "value": "음료"},
+                    ],
+                },
+                {
+                    "type": "text",
+                    "label": "메뉴명",
+                    "name": "menu",
+                    "placeholder": "예: 아메리카노",
+                    "minLength": 1,
+                    "maxLength": 20,
+                    "optional": false,
+                },
+            ],
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        resp = await client.post(url, headers=headers, json=payload)
+
+    return resp.status_code, resp.text
+
+
+
+@app.post("/test")
+async def test_dialog(req: Request):
+    data = await req.json()
+    print("[TEST DIALOG]", data)
+
+    tenant = data.get("tenant") or {}
+    channel = data.get("channel") or {}
+
+    tenant_domain = tenant.get("domain")
+    channel_id = channel.get("id")
+    cmd_token = data.get("cmdToken")
+    trigger_id = data.get("triggerId")
+
+    if not all([tenant_domain, channel_id, cmd_token, trigger_id]):
+        return pack({
+            "responseType": "ephemeral",
+            "text": "❌ Dialog 테스트에 필요한 값이 부족합니다."
+        })
+
+    status, body = await open_dialog(
+        tenant_domain=tenant_domain,
+        channel_id=channel_id,
+        cmd_token=cmd_token,
+        trigger_id=trigger_id,
+    )
+
+    # Dialog는 별도 API로 뜨기 때문에
+    # 커맨드 응답은 비워도 OK
+    return JSONResponse(status_code=200, content={})
+
