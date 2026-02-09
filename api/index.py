@@ -281,7 +281,7 @@ async def open_dialog(
     async with httpx.AsyncClient(timeout=5.0) as client:
         resp = await client.post(url, headers=headers, json=payload)
 
-    return resp.status_code
+    return resp.status_code, resp
 
 
 
