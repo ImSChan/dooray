@@ -228,7 +228,7 @@ async def open_dialog(
     trigger_id: str,
 ):
     url = f"https://{tenant_domain}/messenger/api/channels/{channel_id}/dialogs"
-
+    print(url)
     headers = {
         "token": cmd_token,
         "Content-Type": "application/json",
