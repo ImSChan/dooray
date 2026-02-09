@@ -127,6 +127,7 @@ def section_block_buttons(section: str) -> list[dict]:
 @app.post("/dooray/command")
 async def coffee_command(req: Request):
     data = await req.json()
+    print(data)
     text = (data.get("text") or "").strip()
 
     # if text == "":
