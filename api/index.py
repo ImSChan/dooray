@@ -222,7 +222,7 @@ async def coffee_actions(req: Request):
 
 async def open_dialog(tenant_domain, channel_id, cmd_token, trigger_id):
     url = f"https://{tenant_domain}/messenger/api/channels/{channel_id}/dialogs"
-
+    print(url)
     headers = {
         "Content-Type": "application/json",
         "token": cmd_token,
