@@ -285,7 +285,7 @@ async def open_dialog(
 
 
 
-@app.post("/test")
+@app.post("/dooray/test")
 async def test_dialog(req: Request):
     data = await req.json()
     print("[TEST DIALOG]", data)
