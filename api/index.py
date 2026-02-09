@@ -272,7 +272,7 @@ async def open_dialog(
                     "placeholder": "예: 아메리카노",
                     "minLength": 1,
                     "maxLength": 20,
-                    "optional": false,
+                    "optional": False,
                 },
             ],
         },
