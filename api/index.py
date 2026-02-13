@@ -233,22 +233,30 @@ def analyze_vacation_text(user_text: str) -> dict:
     today = datetime.now().strftime("%Y-%m-%d")
 
     prompt = f"""
-오늘 날짜는 {today} 입니다.
+    오늘 날짜는 {today} 입니다.
+    
+    사용자의 휴가 신청 문장을 분석하여
+    반드시 순수 JSON 객체만 출력하세요.
+    
+    주의사항:
+    - ```json 같은 코드블록을 절대 포함하지 마세요.
+    - 설명 문장 포함하지 마세요.
+    - 오직 JSON만 출력하세요.
+    - 앞뒤 공백 없이 바로 {{ 로 시작하세요.
+    
+    JSON 형식:
+    {{
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD",
+      "reason": "string",
+      "destination": "string",
+      "vacation_type": "연차/반차/병가/기타"
+    }}
+    
+    사용자 입력:
+    \"\"\"{user_text}\"\"\"
+    """
 
-사용자가 입력한 휴가 신청 문장을 분석해서 아래 JSON 형식으로만 응답하세요.
-
-필드:
-- start_date (YYYY-MM-DD)
-- end_date (YYYY-MM-DD)
-- reason (휴가 사유)
-- destination (행선지)
-- vacation_type (연차/반차/병가/기타 중 하나)
-
-사용자 입력:
-\"\"\"{user_text}\"\"\"
-
-반드시 JSON만 출력하세요.
-"""
 
     response = gpt_client.chat.completions.create(
         model="gpt-4o",
