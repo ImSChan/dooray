@@ -299,47 +299,58 @@ async def open_vacation_dialog(
             "title": "📅 휴가 신청",
             "submitLabel": "신청하기",
             "elements": [
+                
+                {
+                    "type": "select",
+                    "label": "휴가 구분",
+                    "name": "vacation_type",
+                    "optional": False,
+                    "options": [
+                        {"label": "연차,보상-Annual,Compensatory", "value": "연차,보상-Annual,Compensatory"},
+                        {"label": "연차,보상(시간)-Annual,Compensatory(time)", "value": "연차,보상(시간)-Annual,Compensatory(time)"},
+                        {"label": "저축휴가-Saved Annual", "value": "저축휴가-Saved Annual"},
+                        {"label": "병가-Sick", "value": "병가-Sick"},
+                        {"label": "보호-일반-Protection-General", "value": "보호-일반-Protection-General"},
+                        {"label": "산전,산후-Protection-Maternity", "value": "산전,산후-Protection-Maternity"},
+                        {"label": "생리휴가(무급)-Menstrual(unpaid)", "value": "생리휴가(무급)-Menstrual(unpaid)"},
+                        {"label": "특별-Celebration-Condolence", "value": "특별-Celebration-Condolence"},
+                        {"label": "공가-Official", "value": "공가-Official"},
+                        {"label": "공가(시간)-Official(time)", "value": "공가(시간)-Official(time)"},
+                        {"label": "장기근속-Long Service", "value": "장기근속-Long Service"},
+                        {"label": "기타-Etc.", "value": "기타-Etc."},
+                        {"label": "자녀돌봄휴가-Child care leave", "value": "자녀돌봄휴가-Child care leave"},
+                        {"label": "자녀돌봄휴가(시간)-Child care leave(time)", "value": "자녀돌봄휴가(시간)-Child care leave(time)"}
+                    ]
+                },
                 {
                     "type": "text",
                     "label": "휴가 시작일",
                     "name": "start_date",
                     "value": vacation_data.get("start_date", ""),
-                    "optional": True
+                    "optional": False
                 },
                 {
                     "type": "text",
                     "label": "휴가 종료일",
                     "name": "end_date",
                     "value": vacation_data.get("end_date", ""),
-                    "optional": True
+                    "optional": False
                 },
                 {
                     "type": "text",
                     "label": "휴가 사유",
                     "name": "reason",
                     "value": vacation_data.get("reason", ""),
-                    "optional": True
+                    "optional": False
                 },
                 {
                     "type": "text",
                     "label": "행선지",
                     "name": "destination",
                     "value": vacation_data.get("destination", ""),
-                    "optional": True
+                    "optional": False
                 },
-                {
-                    "type": "select",
-                    "label": "휴가 구분",
-                    "name": "vacation_type",
-                    "value": vacation_data.get("vacation_type", "연차"),
-                    "optional": True,
-                    "options": [
-                        {"label": "연차", "value": "연차"},
-                        {"label": "반차", "value": "반차"},
-                        {"label": "병가", "value": "병가"},
-                        {"label": "기타", "value": "기타"}
-                    ]
-                }
+
             ]
         }
     }
