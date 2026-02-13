@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi import BackgroundTasks
 from fastapi.responses import JSONResponse
 import httpx
-
+import os
 
 app = FastAPI(title="Coffee Poll – one-click buttons")
 
