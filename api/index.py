@@ -397,28 +397,6 @@ async def open_dialog(tenant_domain, channel_id, cmd_token, trigger_id):
 
 
 @app.post("/dooray/test")
-async def dooray_test(req: Request):
-    data = await req.json()
-    print("[SLASH TEST]", data)
-
-    return pack({
-        "responseType": "ephemeral",
-        "text": "🧪 Dialog 테스트",
-        "attachments": [
-            {
-                "callbackId": "open-dialog-test",
-                "actions": [
-                    {
-                        "name": "open_dialog",
-                        "type": "button",
-                        "text": "대화창 열기",
-                        "value": "open_dialog"
-                    }
-                ]
-            }
-        ]
-    })
-@app.post("/dooray/interactive")
 async def vacation_command(req: Request):
     data = await req.json()
     print("[VACATION COMMAND]", data)
@@ -450,4 +428,3 @@ async def vacation_command(req: Request):
     )
 
     return JSONResponse(status_code=200, content={})
-
