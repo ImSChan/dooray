@@ -220,6 +220,127 @@ async def coffee_actions(req: Request):
     return pack({})
 
 
+from openai import OpenAI
+import json
+from datetime import datetime
+
+gpt_api_key = os.environ.get("OPENAI_API_KEY")
+
+gpt_client = OpenAI(api_key=gpt_api_key)
+
+
+def analyze_vacation_text(user_text: str) -> dict:
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    prompt = f"""
+오늘 날짜는 {today} 입니다.
+
+사용자가 입력한 휴가 신청 문장을 분석해서 아래 JSON 형식으로만 응답하세요.
+
+필드:
+- start_date (YYYY-MM-DD)
+- end_date (YYYY-MM-DD)
+- reason (휴가 사유)
+- destination (행선지)
+- vacation_type (연차/반차/병가/기타 중 하나)
+
+사용자 입력:
+\"\"\"{user_text}\"\"\"
+
+반드시 JSON만 출력하세요.
+"""
+
+    response = gpt_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "당신은 자연어를 휴가신청 필드로 변환하는 도우미입니다."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0
+    )
+
+    content = response.choices[0].message.content.strip()
+
+    try:
+        return json.loads(content)
+    except:
+        print("GPT 응답 파싱 실패:", content)
+        return {}
+
+async def open_vacation_dialog(
+    tenant_domain,
+    channel_id,
+    cmd_token,
+    trigger_id,
+    vacation_data: dict
+):
+    url = f"https://{tenant_domain}/messenger/api/channels/{channel_id}/dialogs"
+
+    headers = {
+        "Content-Type": "application/json",
+        "token": cmd_token,
+        "Dooray-Db-Id": "23",
+    }
+
+    payload = {
+        "token": cmd_token,
+        "triggerId": trigger_id,
+        "callbackId": "vacation-apply",
+        "dialog": {
+            "callbackId": "vacation-apply",
+            "title": "📅 휴가 신청",
+            "submitLabel": "신청하기",
+            "elements": [
+                {
+                    "type": "text",
+                    "label": "휴가 시작일",
+                    "name": "start_date",
+                    "value": vacation_data.get("start_date", ""),
+                    "optional": False
+                },
+                {
+                    "type": "text",
+                    "label": "휴가 종료일",
+                    "name": "end_date",
+                    "value": vacation_data.get("end_date", ""),
+                    "optional": False
+                },
+                {
+                    "type": "text",
+                    "label": "휴가 사유",
+                    "name": "reason",
+                    "value": vacation_data.get("reason", ""),
+                    "optional": False
+                },
+                {
+                    "type": "text",
+                    "label": "행선지",
+                    "name": "destination",
+                    "value": vacation_data.get("destination", ""),
+                    "optional": True
+                },
+                {
+                    "type": "select",
+                    "label": "휴가 구분",
+                    "name": "vacation_type",
+                    "value": vacation_data.get("vacation_type", "연차"),
+                    "optional": False,
+                    "options": [
+                        {"label": "연차", "value": "연차"},
+                        {"label": "반차", "value": "반차"},
+                        {"label": "병가", "value": "병가"},
+                        {"label": "기타", "value": "기타"}
+                    ]
+                }
+            ]
+        }
+    }
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(url, headers=headers, json=payload)
+
+    print("Dialog status:", resp.status_code)
+    print("Dialog body:", resp.text)
 
 async def open_dialog(tenant_domain, channel_id, cmd_token, trigger_id):
     url = f"https://{tenant_domain}/messenger/api/channels/{channel_id}/dialogs"
@@ -298,35 +419,35 @@ async def dooray_test(req: Request):
         ]
     })
 @app.post("/dooray/interactive")
-async def dooray_interactive(req: Request, background: BackgroundTasks):
+async def vacation_command(req: Request):
     data = await req.json()
-    print("[INTERACTIVE]", data)
+    print("[VACATION COMMAND]", data)
 
-    action_value = data.get("actionValue")
-    if action_value != "open_dialog":
-        return JSONResponse(status_code=200, content={})
+    user_text = (data.get("text") or "").strip()
 
-    trigger_id = data.get("triggerId")
+    tenant_domain = data.get("tenantDomain")
+    channel_id = data.get("channelId")
     cmd_token = data.get("cmdToken")
+    trigger_id = data.get("triggerId")
 
-    tenant = data.get("tenant") or {}
-    channel = data.get("channel") or {}
+    if not user_text:
+        return pack({
+            "responseType": "ephemeral",
+            "text": "예: /휴가신청 내일부터 모레까지 제주도 가족여행"
+        })
 
-    tenant_domain = tenant.get("domain")
-    channel_id = channel.get("id")
+    # 🔥 GPT 분석
+    vacation_data = analyze_vacation_text(user_text)
+    print("GPT 분석 결과:", vacation_data)
 
-    if not all([tenant_domain, channel_id, cmd_token, trigger_id]):
-        return JSONResponse(status_code=200, content={})
-
-    # 🔥 Dialog 호출을 Background로 분리
-    background.add_task(
-        open_dialog,
+    # 🔥 Dialog 호출
+    await open_vacation_dialog(
         tenant_domain,
         channel_id,
         cmd_token,
         trigger_id,
+        vacation_data
     )
 
-    # 🔥 Dooray에는 즉시 응답
     return JSONResponse(status_code=200, content={})
 
