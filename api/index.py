@@ -304,21 +304,21 @@ async def open_vacation_dialog(
                     "label": "휴가 시작일",
                     "name": "start_date",
                     "value": vacation_data.get("start_date", ""),
-                    "optional": False
+                    "optional": True
                 },
                 {
                     "type": "text",
                     "label": "휴가 종료일",
                     "name": "end_date",
                     "value": vacation_data.get("end_date", ""),
-                    "optional": False
+                    "optional": True
                 },
                 {
                     "type": "text",
                     "label": "휴가 사유",
                     "name": "reason",
                     "value": vacation_data.get("reason", ""),
-                    "optional": False
+                    "optional": True
                 },
                 {
                     "type": "text",
@@ -332,7 +332,7 @@ async def open_vacation_dialog(
                     "label": "휴가 구분",
                     "name": "vacation_type",
                     "value": vacation_data.get("vacation_type", "연차"),
-                    "optional": False,
+                    "optional": True,
                     "options": [
                         {"label": "연차", "value": "연차"},
                         {"label": "반차", "value": "반차"},
