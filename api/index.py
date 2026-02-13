@@ -227,7 +227,9 @@ async def open_dialog(tenant_domain, channel_id, cmd_token, trigger_id):
     headers = {
         "Content-Type": "application/json",
         "token": cmd_token,
+        "Dooray-Db-Id": "23",   # ← 추가
     }
+
 
     payload = {
         "token": cmd_token,
