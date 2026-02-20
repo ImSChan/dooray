@@ -4,7 +4,7 @@
 - /dooray/actions: dialog_submission 검증 및 채널 공지
 
 ## ENV (선택)
-- DOORAY_VERIFY_TOKEN=your-secret-token
+- OPENAI_API_KEY=your-secret-key
 
 ## Local
 pip install -r requirements.txt
