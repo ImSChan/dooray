@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 import httpx
 import os
 
+# hello
 app = FastAPI(title="Coffee Poll – one-click buttons")
 
 # ---------- 메뉴 ----------
