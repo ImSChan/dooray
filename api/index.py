@@ -126,6 +126,16 @@ def section_block_buttons(section: str) -> list[dict]:
 
     return blocks
 
+# ---------- 테스트 커맨드 ----------
+@app.post("/dooray/hello")
+async def hello_command(req: Request):
+
+    return pack({
+        "responseType": "ephemeral",
+        "text": "안녕하세요!"
+    })
+
+
 # ---------- 커맨드 ----------
 @app.post("/dooray/command")
 async def coffee_command(req: Request):
